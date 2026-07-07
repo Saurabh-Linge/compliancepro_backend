@@ -1,0 +1,1 @@
+ALTER TABLE circular ADD COLUMN is_withdrawn BOOLEAN DEFAULT false;

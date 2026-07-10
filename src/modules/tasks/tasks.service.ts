@@ -80,6 +80,24 @@ export class TasksService {
   }
 
 
+  async getStats() {
+    const totalQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE`;
+    const pendingQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE AND is_approved = FALSE`;
+    const approvedQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE AND is_approved = TRUE`;
+
+    const [totalRes, pendingRes, approvedRes] = await Promise.all([
+      this.db.query(totalQuery),
+      this.db.query(pendingQuery),
+      this.db.query(approvedQuery),
+    ]);
+
+    return {
+      total: parseInt(totalRes.rows[0].count, 10),
+      pending: parseInt(pendingRes.rows[0].count, 10),
+      approved: parseInt(approvedRes.rows[0].count, 10),
+    };
+  }
+
   async createManual(
     description: string,
     circularId: number,

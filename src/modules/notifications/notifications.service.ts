@@ -130,4 +130,45 @@ export class NotificationsService {
       this.logger.error('Error handling assignment update notification', error);
     }
   }
+
+  // Dedicated handler for CO/CCO rejections with review remark included
+  @OnEvent('assignment.rejected')
+  async handleAssignmentRejectedEvent(payload: {
+    assignmentId: number;
+    branchId: number;
+    taskSetName: string;
+    reviewRemark: string;
+  }) {
+    this.logger.log(`Assignment ${payload.assignmentId} REJECTED — notifying branch ${payload.branchId}`);
+
+    const remarkPart = payload.reviewRemark
+      ? ` Reviewer feedback: "${payload.reviewRemark}"`
+      : '';
+
+    const title = '🔴 Re-compliance Required';
+    const message = `Your submission for "${payload.taskSetName}" has been returned for re-compliance.${remarkPart} Please login and resubmit the flagged tasks.`;
+    const emailSubject = `[Action Required] Re-compliance Needed — ${payload.taskSetName}`;
+
+    try {
+      await this.db.query(
+        `INSERT INTO notification (branch_id, title, message) VALUES ($1, $2, $3)`,
+        [payload.branchId, title, message]
+      );
+
+      const usersResult = await this.db.query(
+        `SELECT email FROM users WHERE branch_id = $1 AND email IS NOT NULL AND is_active = true`,
+        [payload.branchId]
+      );
+      for (const row of usersResult.rows) {
+        this.emailService.sendMail(
+          row.email,
+          emailSubject,
+          message,
+          `<p><strong>${title}</strong></p><p>${message}</p><p>Please login to Compliance Pro to view and resubmit.</p>`
+        ).catch(err => this.logger.error(`Failed to send rejection email to ${row.email}`, err));
+      }
+    } catch (error) {
+      this.logger.error('Error handling assignment rejected notification', error);
+    }
+  }
 }

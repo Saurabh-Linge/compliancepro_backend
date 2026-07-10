@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Param, Body, Req, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Param, Body, Req, Query, BadRequestException, Header } from '@nestjs/common';
 import { AssignmentsService } from './assignments.service';
 import type { FastifyRequest } from 'fastify';
 
@@ -48,6 +48,7 @@ export class AssignmentsController {
   }
 
   @Get(':id/tasks')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
   async getAssignmentTasks(@Param('id') id: string) {
     return this.assignmentsService.getAssignmentTasks(parseInt(id, 10));
   }
@@ -103,6 +104,21 @@ export class AssignmentsController {
     );
   }
 
+  @Patch(':id/tasks/:taskId/complete')
+  async completeTaskDirectly(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body('compliance_status') complianceStatus: 'COMPLIED' | 'NOT_COMPLIED',
+    @Body('remarks') remarks: string
+  ) {
+    return this.assignmentsService.completeTaskDirectly(
+      parseInt(taskId, 10),
+      parseInt(id, 10),
+      complianceStatus,
+      remarks
+    );
+  }
+
   @Put(':id/review')
   async reviewAssignment(
     @Param('id') id: string,
@@ -110,5 +126,15 @@ export class AssignmentsController {
     @Body('remark') remark: string
   ) {
     return this.assignmentsService.reviewAssignment(parseInt(id, 10), action, remark);
+  }
+
+  @Patch(':id/tasks/:taskId/review-status')
+  async reviewTaskStatus(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body('review_status') reviewStatus: 'APPROVED' | 'NEEDS_REDO',
+    @Body('review_remark') reviewRemark?: string
+  ) {
+    return this.assignmentsService.reviewTaskStatus(parseInt(taskId, 10), reviewStatus, reviewRemark);
   }
 }

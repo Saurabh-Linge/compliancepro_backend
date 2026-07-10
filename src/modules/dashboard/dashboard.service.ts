@@ -48,6 +48,37 @@ export class DashboardService {
       recentAssignmentsQuery += ` ORDER BY a.id DESC LIMIT 8`;
     }
 
+    const authorityReportsQuery = `
+      SELECT 
+        a.id, 
+        a.name,
+        (SELECT count(*) FROM circular c WHERE c.authority_id = a.id) as applicable_circulars,
+        (SELECT count(at.id) 
+         FROM assignment_task at 
+         JOIN compliance_task ct ON at.task_id = ct.id 
+         JOIN circular c ON ct.circular_id = c.id 
+         WHERE c.authority_id = a.id) as total_tasks,
+        (SELECT count(at.id) 
+         FROM assignment_task at 
+         JOIN compliance_task ct ON at.task_id = ct.id 
+         JOIN circular c ON ct.circular_id = c.id 
+         WHERE c.authority_id = a.id AND at.status = 'COMPLETED') as completed_tasks,
+        (SELECT count(at.id) 
+         FROM assignment_task at 
+         JOIN compliance_task ct ON at.task_id = ct.id 
+         JOIN circular c ON ct.circular_id = c.id 
+         WHERE c.authority_id = a.id AND at.status = 'PENDING') as pending_tasks,
+        (SELECT count(at.id) 
+         FROM assignment_task at 
+         JOIN compliance_task ct ON at.task_id = ct.id 
+         JOIN circular c ON ct.circular_id = c.id 
+         JOIN assignment assign ON at.assignment_id = assign.id
+         WHERE c.authority_id = a.id AND at.status = 'PENDING' AND assign.proposed_timeline < CURRENT_DATE AND assign.status != 'COMPLETED') as overdue_tasks,
+        (SELECT COALESCE(sum(c.penalty_amount), 0) FROM circular c WHERE c.authority_id = a.id AND c.is_penalty_applicable = TRUE) as total_penalty
+      FROM authority a
+      ORDER BY a.id ASC
+    `;
+
     const [
       circularCount,
       taskCount,
@@ -58,7 +89,12 @@ export class DashboardService {
       recentCirculars,
       assignmentStats,
       recentAssignments,
-      authorityStats
+      authorityStats,
+      branchesCountRes,
+      headOfficeCountRes,
+      pendingComplianceTasksRes,
+      overdueTasksRes,
+      authorityReportsRes
     ] = await Promise.all([
       this.db.query('SELECT count(*) as count FROM circular'),
       this.db.query('SELECT count(*) as count FROM compliance_task'),
@@ -74,7 +110,17 @@ export class DashboardService {
       `),
       this.db.query(assignmentStatsQuery, assignmentParams),
       this.db.query(recentAssignmentsQuery, recentAssignmentsParams),
-      this.db.query(`SELECT a.name, count(c.id) as count FROM authority a LEFT JOIN circular c ON c.authority_id = a.id GROUP BY a.name`)
+      this.db.query(`SELECT a.name, count(c.id) as count FROM authority a LEFT JOIN circular c ON c.authority_id = a.id GROUP BY a.name`),
+      this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'BRANCH'"),
+      this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'DEPARTMENT'"),
+      this.db.query("SELECT count(*) as count FROM assignment_task WHERE status = 'PENDING'"),
+      this.db.query(`
+        SELECT count(at.id) as count 
+        FROM assignment_task at 
+        JOIN assignment a ON at.assignment_id = a.id 
+        WHERE at.status = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED'
+      `),
+      this.db.query(authorityReportsQuery)
     ]);
 
     const stats = assignmentStats.rows[0] || {};
@@ -97,7 +143,22 @@ export class DashboardService {
       },
       recentCirculars: recentCirculars.rows,
       recentAssignments: recentAssignments.rows,
-      authorityStats: authorityStats.rows
+      authorityStats: authorityStats.rows,
+      ccoMetrics: {
+        totalBranches: parseInt(branchesCountRes.rows[0]?.count || '0', 10),
+        totalHeadOffice: parseInt(headOfficeCountRes.rows[0]?.count || '0', 10),
+        pendingCompliance: parseInt(pendingComplianceTasksRes.rows[0]?.count || '0', 10),
+        totalOverdue: parseInt(overdueTasksRes.rows[0]?.count || '0', 10),
+        authorityReports: authorityReportsRes.rows.map((row: any) => ({
+          ...row,
+          applicable_circulars: parseInt(row.applicable_circulars || '0', 10),
+          total_tasks: parseInt(row.total_tasks || '0', 10),
+          completed_tasks: parseInt(row.completed_tasks || '0', 10),
+          pending_tasks: parseInt(row.pending_tasks || '0', 10),
+          overdue_tasks: parseInt(row.overdue_tasks || '0', 10),
+          total_penalty: parseFloat(row.total_penalty || '0')
+        }))
+      }
     };
   }
 }

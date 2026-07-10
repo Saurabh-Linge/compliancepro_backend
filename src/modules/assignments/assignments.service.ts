@@ -62,15 +62,41 @@ export class AssignmentsService {
       SELECT 
         at.id as assignment_task_id, 
         at.status, 
+        at.compliance_status,
+        at.remarks,
+        at.review_status,
+        at.review_remark,
         ct.id as task_id, 
         ct.description,
-        ct.circular_id,
+        th.name as header_name,
+        a.id as assignment_id,
+        a.status as assignment_status,
+        a.proposed_timeline,
+        a.review_remark as assignment_review_remark,
+        ts.name as task_set_name,
+        ts.frequency,
+        ts.start_date,
+        ts.end_date,
+        bd.name as branch_name,
+        c.reference_no as circular_reference_no,
         c.title as circular_title,
-        th.name as header_name
+        auth.name as authority_name,
+        e.file_url as evidence_url,
+        e.remark as evidence_remark,
+        CASE WHEN e.id IS NOT NULL THEN true ELSE false END as has_evidence
       FROM assignment_task at
+      JOIN assignment a ON a.id = at.assignment_id
+      JOIN task_set ts ON ts.id = a.task_set_id
+      JOIN branch_dept bd ON bd.id = a.branch_id
       JOIN compliance_task ct ON ct.id = at.task_id
-      JOIN circular c ON c.id = ct.circular_id
+      LEFT JOIN circular c ON c.id = ct.circular_id
+      LEFT JOIN authority auth ON auth.id = c.authority_id
       LEFT JOIN task_header th ON ct.header_id = th.id
+      LEFT JOIN LATERAL (
+        SELECT id, file_url, remark FROM evidence
+        WHERE assignment_task_id = at.id
+        ORDER BY submitted_at DESC LIMIT 1
+      ) e ON true
       WHERE at.assignment_id = $1
       ORDER BY th.id ASC NULLS LAST, at.id ASC
     `;
@@ -192,7 +218,21 @@ export class AssignmentsService {
       RETURNING *
     `;
     const result = await this.db.query(query, [status, id]);
-    return result.rows[0];
+    const updated = result.rows[0];
+
+    if (updated && status === 'REVIEW_PENDING') {
+      const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
+      const tsRes = await this.db.query(taskSetQuery, [id]);
+
+      this.eventEmitter.emit('assignment.updated', {
+        assignmentId: id,
+        status: 'REVIEW_PENDING',
+        branchId: updated.branch_id,
+        taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
+      });
+    }
+
+    return updated;
   }
 
   async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: {buffer: Buffer, filename: string}[], remark: string) {
@@ -212,33 +252,24 @@ export class AssignmentsService {
     }
     
     // 3. Mark task as COMPLETED
-    await this.db.query(`UPDATE assignment_task SET status = 'COMPLETED', completed_at = NOW() WHERE id = $1`, [assignmentTaskId]);
-
-    // 4. Check if all tasks in the assignment are completed. If so, move assignment to Review_Pending
-    const checkQuery = `
-      SELECT count(*) as total,
-             sum(case when status = 'COMPLETED' then 1 else 0 end) as completed
-      FROM assignment_task
-      WHERE assignment_id = $1
-    `;
-    const checkRes = await this.db.query(checkQuery, [assignmentId]);
-    const { total, completed } = checkRes.rows[0];
-    
-    if (total > 0 && total === completed) {
-      const updated = await this.updateStatus(assignmentId, 'REVIEW_PENDING');
-      
-      const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
-      const tsRes = await this.db.query(taskSetQuery, [assignmentId]);
-
-      this.eventEmitter.emit('assignment.updated', {
-        assignmentId,
-        status: 'REVIEW_PENDING',
-        branchId: updated.branch_id,
-        taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
-      });
-    }
+    await this.db.query(`UPDATE assignment_task SET status = 'COMPLETED', compliance_status = 'COMPLIED', completed_at = NOW() WHERE id = $1`, [assignmentTaskId]);
 
     return lastResult;
+  }
+
+  async completeTaskDirectly(assignmentTaskId: number, assignmentId: number, complianceStatus: 'COMPLIED' | 'NOT_COMPLIED', remarks: string) {
+    const query = `
+      UPDATE assignment_task
+      SET compliance_status = $1,
+          remarks = $2,
+          status = 'COMPLETED',
+          completed_at = NOW()
+      WHERE id = $3 AND assignment_id = $4
+      RETURNING *
+    `;
+    const result = await this.db.query(query, [complianceStatus, remarks, assignmentTaskId, assignmentId]);
+    const updatedTask = result.rows[0];
+    return updatedTask;
   }
 
   async getAssignmentEvidence(assignmentId: number) {
@@ -277,15 +308,35 @@ export class AssignmentsService {
       const updated = updatedRes.rows[0];
 
       if (action === 'REJECT') {
-        await client.query(
-          `
-            UPDATE assignment_task
-            SET status = 'PENDING',
-                completed_at = NULL
-            WHERE assignment_id = $1
-          `,
-          [assignmentId],
+        // Only reset tasks flagged as NEEDS_REDO (or all if none were flagged)
+        const flaggedCount = await client.query(
+          `SELECT COUNT(*) FROM assignment_task WHERE assignment_id = $1 AND review_status = 'NEEDS_REDO'`,
+          [assignmentId]
         );
+        const hasFlagged = parseInt(flaggedCount.rows[0].count, 10) > 0;
+
+        if (hasFlagged) {
+          // Reset only flagged tasks
+          await client.query(
+            `UPDATE assignment_task
+             SET status = 'PENDING', completed_at = NULL, compliance_status = 'PENDING', remarks = NULL
+             WHERE assignment_id = $1 AND review_status = 'NEEDS_REDO'`,
+            [assignmentId]
+          );
+          // Clear review_status on all tasks
+          await client.query(
+            `UPDATE assignment_task SET review_status = NULL WHERE assignment_id = $1`,
+            [assignmentId]
+          );
+        } else {
+          // No per-task flags set — reset all tasks
+          await client.query(
+            `UPDATE assignment_task
+             SET status = 'PENDING', completed_at = NULL, compliance_status = 'PENDING', remarks = NULL, review_status = NULL
+             WHERE assignment_id = $1`,
+            [assignmentId]
+          );
+        }
       }
 
       return updated;
@@ -294,14 +345,35 @@ export class AssignmentsService {
 
     const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
     const tsRes = await this.db.query(taskSetQuery, [assignmentId]);
+    const taskSetName = tsRes.rows[0]?.name || 'Unknown Task Set';
 
     this.eventEmitter.emit('assignment.updated', {
       assignmentId,
       status: updated.status,
       branchId: updated.branch_id,
-      taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
+      taskSetName
     });
+
+    // Emit re-compliance notification for branch when rejected
+    if (updated.status === 'REJECTED') {
+      this.eventEmitter.emit('assignment.rejected', {
+        assignmentId,
+        branchId: updated.branch_id,
+        taskSetName,
+        reviewRemark: remark
+      });
+    }
 
     return updated;
   }
-}
+
+  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO', reviewRemark?: string) {
+    const query = `
+      UPDATE assignment_task
+      SET review_status = $1, review_remark = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+    const result = await this.db.query(query, [reviewStatus, reviewRemark || null, assignmentTaskId]);
+    return result.rows[0];
+  }

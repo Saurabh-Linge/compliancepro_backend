@@ -5,6 +5,11 @@ import { TasksService } from './tasks.service';
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
+  @Get('stats')
+  async getStats() {
+    return this.tasksService.getStats();
+  }
+
   @Get()
   async getTasks(
     @Query('page') page: string = '1',

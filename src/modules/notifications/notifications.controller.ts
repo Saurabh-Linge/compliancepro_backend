@@ -11,7 +11,10 @@ export class NotificationsController {
     const user = req.user;
     const userId: string = user?.sub || user?.id || '';
     const role: string = user?.role || '';
-    const branchId: number | null = user?.branchId ? Number(user.branchId) : null;
+    
+    // Support both camelCase branchId and snake_case branch_id from JWT payload
+    const rawBranchId = user?.branchId ?? user?.branch_id;
+    const branchId: number | null = rawBranchId ? Number(rawBranchId) : null;
 
     return this.notificationsService.getNotificationsForUser(userId, role, branchId);
   }
@@ -21,3 +24,4 @@ export class NotificationsController {
     return this.notificationsService.markAsRead(parseInt(id, 10));
   }
 }
+

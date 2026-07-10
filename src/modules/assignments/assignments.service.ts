@@ -1,3 +1,4 @@
+// AssignmentsService — handles assignment CRUD and review logic
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../../core/database/database.service';
 import { StorageService } from '../../core/storage/storage.service';
@@ -11,7 +12,7 @@ export class AssignmentsService {
     private readonly db: DatabaseService,
     private readonly storage: StorageService,
     private eventEmitter: EventEmitter2
-  ) {}
+  ) { }
 
   async create(taskSetId: number, branchIds: number[], proposedTimeline: string) {
     const assignments = [];
@@ -136,15 +137,15 @@ export class AssignmentsService {
       JOIN branch_dept bd ON bd.id = a.branch_id
     `;
     const params: any[] = [];
-    
+
     // Temporarily removed authorization completely
     // if (userRole === 'CO' && userId) {
     //   query += ` WHERE bd.co_user_id = $1 `;
     //   params.push(userId);
     // }
-    
+
     query += ` ORDER BY a.id DESC `;
-    
+
     const result = await this.db.query(query, params);
     return result.rows;
   }
@@ -198,7 +199,7 @@ export class AssignmentsService {
       ORDER BY a.id DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
-    
+
     values.push(limit, offset);
     const result = await this.db.query(query, values);
 
@@ -235,7 +236,7 @@ export class AssignmentsService {
     return updated;
   }
 
-  async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: {buffer: Buffer, filename: string}[], remark: string) {
+  async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: { buffer: Buffer, filename: string }[], remark: string) {
     let lastResult = null;
     for (const file of filesData) {
       // 1. Upload file to MinIO
@@ -250,7 +251,7 @@ export class AssignmentsService {
       const result = await this.db.query(query, [assignmentTaskId, assignmentId, url, remark]);
       lastResult = result.rows[0];
     }
-    
+
     // 3. Mark task as COMPLETED
     await this.db.query(`UPDATE assignment_task SET status = 'COMPLETED', compliance_status = 'COMPLIED', completed_at = NOW() WHERE id = $1`, [assignmentTaskId]);
 
@@ -377,3 +378,4 @@ export class AssignmentsService {
     const result = await this.db.query(query, [reviewStatus, reviewRemark || null, assignmentTaskId]);
     return result.rows[0];
   }
+}

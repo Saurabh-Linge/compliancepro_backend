@@ -37,8 +37,14 @@ export class TaskSetsController {
     return this.taskSetsService.mapTasks(+id, taskIds);
   }
 
+  @Post(':id/branches')
+  mapBranches(@Param('id') id: string, @Body('branchIds') branchIds: number[]) {
+    return this.taskSetsService.mapBranches(+id, branchIds);
+  }
+
   @Post(':id/reopen')
   reopen(@Param('id') id: string) {
     return this.taskSetsService.reopen(+id);
   }
+
 }

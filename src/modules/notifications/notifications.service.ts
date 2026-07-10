@@ -76,13 +76,10 @@ export class NotificationsService {
       title = 'Assignment Approved';
       message = `Your assignment for ${payload.taskSetName} was approved by the Compliance Officer.`;
       emailSubject = `[Approved] ${payload.taskSetName}`;
-    } else if (payload.status === 'REJECTED') {
-      title = 'Assignment Rejected';
-      message = `Your assignment for ${payload.taskSetName} was rejected. Please review feedback and resubmit.`;
-      emailSubject = `[Action Required] Rejected - ${payload.taskSetName}`;
     } else {
       return; // Not a status we notify for
     }
+
 
     try {
       if (payload.status === 'REVIEW_PENDING') {

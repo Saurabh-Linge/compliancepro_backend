@@ -1,10 +1,20 @@
+// AssignmentsController — handles all /assignments/* routes
 import { Controller, Get, Post, Put, Patch, Param, Body, Req, Query, BadRequestException, Header } from '@nestjs/common';
 import { AssignmentsService } from './assignments.service';
+import { AssignmentsSchedulerService } from './assignments-scheduler.service';
 import type { FastifyRequest } from 'fastify';
 
 @Controller('assignments')
 export class AssignmentsController {
-  constructor(private readonly assignmentsService: AssignmentsService) {}
+  constructor(
+    private readonly assignmentsService: AssignmentsService,
+    private readonly assignmentsSchedulerService: AssignmentsSchedulerService
+  ) {}
+
+  @Post('generate-assignments')
+  async triggerAutoGeneration(@Body('task_set_id') taskSetId?: number) {
+    return this.assignmentsSchedulerService.generateAssignmentsForActiveTaskSets(taskSetId);
+  }
 
   @Post()
   async create(
@@ -14,6 +24,7 @@ export class AssignmentsController {
   ) {
     return this.assignmentsService.create(taskSetId, branchIds, proposedTimeline);
   }
+
 
   @Get()
   async getAssignments(

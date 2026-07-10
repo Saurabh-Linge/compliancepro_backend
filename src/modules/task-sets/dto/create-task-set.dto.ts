@@ -28,4 +28,10 @@ export class CreateTaskSetDto {
   @IsArray()
   @IsNumber({}, { each: true })
   taskIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  branchIds?: number[];
 }
+

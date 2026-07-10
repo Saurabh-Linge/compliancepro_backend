@@ -47,6 +47,13 @@ export class TaskSetsService {
         WHERE tsm.task_set_id = $1
       `, [id]);
       taskSet.tasks = tasksResult.rows;
+
+      const branchesResult = await this.db.query(`
+        SELECT b.* FROM branch_dept b
+        JOIN task_set_branch tsb ON b.id = tsb.branch_id
+        WHERE tsb.task_set_id = $1
+      `, [id]);
+      taskSet.branches = branchesResult.rows;
     }
     return taskSet;
   }
@@ -93,6 +100,19 @@ export class TaskSetsService {
     return { mapped: true };
   }
 
+  async mapBranches(id: number, branchIds: number[]) {
+    // First clear existing mappings
+    await this.db.query(`DELETE FROM task_set_branch WHERE task_set_id = $1`, [id]);
+    
+    // Add new mappings
+    if (branchIds && branchIds.length > 0) {
+      const mappingValues = branchIds.map(branchId => `(${id}, ${branchId})`).join(',');
+      await this.db.query(`INSERT INTO task_set_branch (task_set_id, branch_id) VALUES ${mappingValues}`);
+    }
+    
+    return { mapped: true };
+  }
+
   async reopen(id: number) {
     // Set all assignments for this task_set_id to PENDING_RECOMPLIANCE and clear review remarks
     await this.db.query(`
@@ -103,4 +123,5 @@ export class TaskSetsService {
     
     return { reopened: true };
   }
+
 }

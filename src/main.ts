@@ -44,7 +44,7 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3578;
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3580;
   await app.listen(port, '0.0.0.0');
 }
 

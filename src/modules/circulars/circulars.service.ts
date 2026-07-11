@@ -34,6 +34,8 @@ export class CircularsService {
     penalty_description?: string;
     pdf_url?: string | null;
     is_withdrawn?: boolean;
+    is_applicable?: boolean;
+    is_active?: boolean;
   }, options: { emitProcessing?: boolean } = { emitProcessing: true }) {
     const query = `
       INSERT INTO circular (
@@ -49,9 +51,11 @@ export class CircularsService {
         penalty_amount,
         penalty_description,
         pdf_url,
-        is_withdrawn
+        is_withdrawn,
+        is_applicable,
+        is_active
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
     `;
     const result = await this.db.query(query, [
@@ -68,6 +72,8 @@ export class CircularsService {
       input.penalty_description || null,
       input.pdf_url || null,
       input.is_withdrawn ?? false,
+      input.is_applicable ?? true,
+      input.is_active ?? true,
     ]);
     const circular = result.rows[0];
 
@@ -92,6 +98,8 @@ export class CircularsService {
     penalty_amount?: number | null;
     penalty_description?: string;
     is_withdrawn?: boolean;
+    is_applicable?: boolean;
+    is_active?: boolean;
   }, files: CircularUploadFile[]) {
     this.logger.log(`[createWithFiles] Started for title: ${input.title} with ${files.length} files`);
     
@@ -183,7 +191,7 @@ export class CircularsService {
     return result.rows;
   }
 
-  async findAllPaginated(params: { page: number; limit: number; search?: string; hasTasks?: boolean }) {
+  async findAllPaginated(params: { page: number; limit: number; search?: string; hasTasks?: boolean; authority_id?: number; is_active?: boolean; is_applicable?: boolean }) {
     const { page, limit, search, hasTasks } = params;
     const offset = (page - 1) * limit;
 
@@ -199,6 +207,24 @@ export class CircularsService {
 
     if (hasTasks) {
       conditions.push(`EXISTS (SELECT 1 FROM compliance_task ct WHERE ct.circular_id = c.id)`);
+    }
+
+    if (params.authority_id) {
+      conditions.push(`c.authority_id = $${paramIndex}`);
+      values.push(params.authority_id);
+      paramIndex++;
+    }
+
+    if (params.is_active !== undefined) {
+      conditions.push(`c.is_active = $${paramIndex}`);
+      values.push(params.is_active);
+      paramIndex++;
+    }
+
+    if (params.is_applicable !== undefined) {
+      conditions.push(`c.is_applicable = $${paramIndex}`);
+      values.push(params.is_applicable);
+      paramIndex++;
     }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
@@ -343,5 +369,48 @@ export class CircularsService {
       amendments: amendmentsResult.rows,
       isOriginal: rootId === id,
     };
+  }
+
+  async update(id: number, input: {
+    authority_id?: number;
+    reference_no?: string | null;
+    title?: string;
+    published_date?: string;
+    priority?: string;
+    circular_type?: number;
+    description?: string | null;
+    portal_website?: string | null;
+    is_penalty_applicable?: boolean;
+    penalty_amount?: number | null;
+    penalty_description?: string | null;
+    is_withdrawn?: boolean;
+    is_applicable?: boolean;
+    is_active?: boolean;
+  }) {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    Object.entries(input).forEach(([key, value]) => {
+      if (value !== undefined) {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+
+    if (fields.length === 0) {
+      return this.findOne(id);
+    }
+
+    values.push(id);
+    const query = `
+      UPDATE circular 
+      SET ${fields.join(', ')} 
+      WHERE id = $${paramIndex} 
+      RETURNING *
+    `;
+    const result = await this.db.query(query, values);
+    return result.rows[0];
   }
 }

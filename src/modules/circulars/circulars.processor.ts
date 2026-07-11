@@ -82,22 +82,24 @@ export class CircularsProcessor extends WorkerHost {
 
         await this.db.query(
           `UPDATE circular SET 
-            reference_no = COALESCE($1, reference_no), 
+            reference_no = CASE WHEN reference_no IS NULL OR reference_no = '' THEN COALESCE($1, reference_no) ELSE reference_no END, 
             priority = COALESCE($2, priority),
             circular_type = COALESCE($3, circular_type),
             description = CASE WHEN description = 'Automated scrape from RBI website' THEN $4 ELSE COALESCE($4, description) END,
             is_penalty_applicable = COALESCE($5, is_penalty_applicable),
             penalty_amount = COALESCE($6, penalty_amount),
-            penalty_description = COALESCE($7, penalty_description)
-           WHERE id = $8`,
+            penalty_description = COALESCE($7, penalty_description),
+            title = CASE WHEN title IS NULL OR title = '' OR title = reference_no OR description = 'Automated scrape from RBI website' THEN COALESCE($8, title) ELSE title END
+           WHERE id = $9`,
           [
-            extractedData.reference_no,
+            extractedData.reference_no || (extractedData as any).referenceNo || null,
             extractedData.priority,
             extractedData.circular_type,
             extractedData.description || 'Automated scrape from RBI website',
             extractedData.is_penalty_applicable,
             extractedData.penalty_amount,
             extractedData.penalty_description,
+            extractedData.title || null,
             data.circularId
           ]
         );
@@ -291,22 +293,24 @@ export class CircularsProcessor extends WorkerHost {
 
       await this.db.query(
         `UPDATE circular SET 
-          reference_no = COALESCE($1, reference_no), 
+          reference_no = CASE WHEN reference_no IS NULL OR reference_no = '' THEN COALESCE($1, reference_no) ELSE reference_no END, 
           priority = COALESCE($2, priority),
           circular_type = COALESCE($3, circular_type),
           description = CASE WHEN description = 'Automated scrape from RBI website' THEN $4 ELSE COALESCE($4, description) END,
           is_penalty_applicable = COALESCE($5, is_penalty_applicable),
           penalty_amount = COALESCE($6, penalty_amount),
-          penalty_description = COALESCE($7, penalty_description)
-         WHERE id = $8`,
+          penalty_description = COALESCE($7, penalty_description),
+          title = CASE WHEN title IS NULL OR title = '' OR title = reference_no OR description = 'Automated scrape from RBI website' THEN COALESCE($8, title) ELSE title END
+         WHERE id = $9`,
         [
-          extractedData.reference_no,
+          extractedData.reference_no || (extractedData as any).referenceNo || null,
           extractedData.priority,
           extractedData.circular_type,
           extractedData.description || 'Automated scrape from RBI website',
           extractedData.is_penalty_applicable,
           extractedData.penalty_amount,
           extractedData.penalty_description,
+          extractedData.title || null,
           circular.id
         ]
       );

@@ -26,6 +26,7 @@ import { JwtAuthGuard } from './core/auth/jwt-auth.guard';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ScraperModule } from './modules/scraper/scraper.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { ScraperModule } from './modules/scraper/scraper.module';
     AuditAreasModule,
     ScheduleModule.forRoot(),
     ScraperModule,
+    ReportsModule
   ],
   controllers: [AppController],
   providers: [
@@ -75,4 +77,4 @@ import { ScraperModule } from './modules/scraper/scraper.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

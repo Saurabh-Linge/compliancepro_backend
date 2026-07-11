@@ -12,6 +12,7 @@ export interface ExtractedTask {
 
 export interface ExtractedData {
   reference_no: string | null;
+  title?: string | null;
   priority: string;
   circular_type: number | null;
   description: string;
@@ -87,7 +88,8 @@ IMPORTANT: This includes any regulatory amendments, rule changes, procedural upd
 
 Return ONLY a valid JSON object matching this exact schema:
 {
-  "reference_no": "string (e.g. RBI/2023-24/123) or null",
+  "reference_no": "string (The official circular reference number, e.g. RBI/2023-24/123 or DOR.ACC.REC.102/21.04.018/2025-26. Look closely at the header and first page, do not return null if a reference number is mentioned) or null",
+  "title": "string (The official name/subject of the circular, e.g. Information Technology Governance in Banks. Do not return null if a title is mentioned) or null",
   "priority": "High, Medium, or General",
   "circular_type": null,
   "description": "A short 1-2 sentence summary of the circular",
@@ -661,5 +663,57 @@ Reply with only one word: YES or NO.`
   /** Remove Qwen3 <think>...</think> reasoning blocks from output */
   private stripThinkTags(text: string): string {
     return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  }
+
+  async extractMetadata(text: string): Promise<{ reference_no: string | null; title: string | null; published_date: string | null }> {
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a compliance analyst. Read the following regulatory circular text and extract key metadata.
+Return ONLY a valid JSON object matching this exact schema:
+{
+  "reference_no": "string (the official reference number, e.g. RBI/2023-24/123 or DOR.ACC.REC.102) or null",
+  "title": "string (the official clean title/subject of the circular, e.g. Information Technology Governance in Banks) or null",
+  "published_date": "string (YYYY-MM-DD format, e.g. 2025-12-15) or null"
+}
+No explanation, no markdown, no extra text. Only the JSON object.`,
+      },
+      {
+        role: 'user',
+        content: `Circular Text:\n${text.substring(0, 12000)}\n\nJSON:`,
+      },
+    ];
+
+    try {
+      const response = await this.fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: this.modelName,
+          messages,
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI API error: ${response.statusText}`);
+      }
+
+      const resJson = await response.json();
+      const content = this.stripThinkTags(resJson.choices?.[0]?.message?.content || '{}');
+      const parsed = JSON.parse(content);
+      return {
+        reference_no: parsed.reference_no || parsed.referenceNo || null,
+        title: parsed.title || null,
+        published_date: parsed.published_date || parsed.publishedDate || null,
+      };
+    } catch (err) {
+      this.logger.error('[AiService] Failed to extract metadata', err);
+      return { reference_no: null, title: null, published_date: null };
+    }
   }
 }

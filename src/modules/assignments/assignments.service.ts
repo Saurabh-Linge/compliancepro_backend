@@ -42,7 +42,7 @@ export class AssignmentsService {
   async getAssignmentsByBranch(branchId: number) {
     const query = `
       SELECT 
-        a.id, a.proposed_timeline, a.status,
+        a.id, a.proposed_timeline, a.status, a.created_at,
         ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date,
         (
           SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description))
@@ -129,7 +129,7 @@ export class AssignmentsService {
   async getAllAssignments(userRole?: string, userId?: string) {
     let query = `
       SELECT 
-        a.id, a.proposed_timeline, a.status,
+        a.id, a.proposed_timeline, a.status, a.created_at,
         ts.name as task_set_name,
         bd.name as branch_name
       FROM assignment a
@@ -183,7 +183,7 @@ export class AssignmentsService {
 
     const query = `
       SELECT 
-        a.id, a.proposed_timeline, a.status,
+        a.id, a.proposed_timeline, a.status, a.created_at,
         ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date,
         bd.name as branch_name,
         (

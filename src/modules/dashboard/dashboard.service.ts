@@ -113,7 +113,7 @@ export class DashboardService {
       this.db.query(`SELECT a.name, count(c.id) as count FROM authority a LEFT JOIN circular c ON c.authority_id = a.id GROUP BY a.name`),
       this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'BRANCH'"),
       this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'DEPARTMENT'"),
-      this.db.query("SELECT count(*) as count FROM assignment_task WHERE status = 'PENDING'"),
+      this.db.query("SELECT count(*) as count FROM assignment WHERE status = 'ESCALATED_TO_CCO'"),
       this.db.query(`
         SELECT count(at.id) as count 
         FROM assignment_task at 
@@ -144,6 +144,77 @@ export class DashboardService {
       recentCirculars: recentCirculars.rows,
       recentAssignments: recentAssignments.rows,
       authorityStats: authorityStats.rows,
+      coMetrics: role === 'CO' && userId ? await (async () => {
+        const [
+          coBranchesCount,
+          coHeadOfficeCount,
+          coPendingCompliance,
+          coOverdue,
+          coBranchReports,
+          coAwaitingAction
+        ] = await Promise.all([
+          this.db.query("SELECT count(*) as count FROM branch_dept WHERE co_user_id = $1 AND type = 'BRANCH'", [userId]),
+          this.db.query("SELECT count(*) as count FROM branch_dept WHERE co_user_id = $1 AND type = 'DEPARTMENT'", [userId]),
+          this.db.query(`
+            SELECT count(at.id) as count
+            FROM assignment_task at
+            JOIN assignment a ON at.assignment_id = a.id
+            JOIN branch_dept bd ON a.branch_id = bd.id
+            WHERE bd.co_user_id = $1 AND at.status = 'PENDING'
+          `, [userId]),
+          this.db.query(`
+            SELECT count(at.id) as count
+            FROM assignment_task at
+            JOIN assignment a ON at.assignment_id = a.id
+            JOIN branch_dept bd ON a.branch_id = bd.id
+            WHERE bd.co_user_id = $1 AND at.status = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED'
+          `, [userId]),
+          this.db.query(`
+            SELECT 
+              bd.id,
+              bd.name,
+              bd.type,
+              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id) as total_assignments,
+              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'COMPLETED') as completed_assignments,
+              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'REVIEW_PENDING') as review_pending_assignments,
+              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'In_Progress') as active_assignments,
+              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED') as overdue_assignments
+            FROM branch_dept bd
+            WHERE bd.co_user_id = $1
+            ORDER BY bd.name ASC
+          `, [userId]),
+          this.db.query(`
+            SELECT 
+              a.id as assignment_id,
+              ts.name as task_set_name,
+              bd.name as branch_name,
+              a.status,
+              a.proposed_timeline::TEXT as proposed_timeline
+            FROM assignment a
+            JOIN task_set ts ON ts.id = a.task_set_id
+            JOIN branch_dept bd ON bd.id = a.branch_id
+            WHERE bd.co_user_id = $1 AND a.status IN ('Timeline_Review', 'REVIEW_PENDING')
+            ORDER BY a.id DESC
+            LIMIT 10
+          `, [userId])
+        ]);
+
+        return {
+          totalBranches: parseInt(coBranchesCount.rows[0]?.count || '0', 10),
+          totalHeadOffice: parseInt(coHeadOfficeCount.rows[0]?.count || '0', 10),
+          pendingCompliance: parseInt(coPendingCompliance.rows[0]?.count || '0', 10),
+          totalOverdue: parseInt(coOverdue.rows[0]?.count || '0', 10),
+          branchReports: coBranchReports.rows.map((row: any) => ({
+            ...row,
+            total_assignments: parseInt(row.total_assignments || '0', 10),
+            completed_assignments: parseInt(row.completed_assignments || '0', 10),
+            review_pending_assignments: parseInt(row.review_pending_assignments || '0', 10),
+            active_assignments: parseInt(row.active_assignments || '0', 10),
+            overdue_assignments: parseInt(row.overdue_assignments || '0', 10)
+          })),
+          awaitingActionQueue: coAwaitingAction.rows
+        };
+      })() : null,
       ccoMetrics: {
         totalBranches: parseInt(branchesCountRes.rows[0]?.count || '0', 10),
         totalHeadOffice: parseInt(headOfficeCountRes.rows[0]?.count || '0', 10),

@@ -5,6 +5,10 @@ export class CreateTaskSetDto {
   name: string;
 
   @IsOptional()
+  @IsNumber()
+  circular_id?: number;
+
+  @IsOptional()
   @IsDateString()
   default_due_date?: Date;
 

@@ -9,12 +9,13 @@ export class TaskSetsService {
 
   async create(createTaskSetDto: CreateTaskSetDto) {
     const query = `
-      INSERT INTO task_set (name, default_due_date, start_date, end_date, frequency, reporting_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO task_set (name, circular_id, default_due_date, start_date, end_date, frequency, reporting_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
     const result = await this.db.query(query, [
       createTaskSetDto.name,
+      createTaskSetDto.circular_id || null,
       createTaskSetDto.default_due_date || null,
       createTaskSetDto.start_date || null,
       createTaskSetDto.end_date || null,
@@ -33,7 +34,14 @@ export class TaskSetsService {
   }
 
   async findAll() {
-    const result = await this.db.query(`SELECT * FROM task_set ORDER BY id ASC`);
+    const result = await this.db.query(`
+      SELECT ts.*,
+        c.title AS circular_title,
+        c.reference_no AS circular_reference_no
+      FROM task_set ts
+      LEFT JOIN circular c ON c.id = ts.circular_id
+      ORDER BY ts.id ASC
+    `);
     return result.rows;
   }
 
@@ -62,16 +70,18 @@ export class TaskSetsService {
     const query = `
       UPDATE task_set
       SET name = COALESCE($1, name),
-          default_due_date = COALESCE($2, default_due_date),
-          start_date = COALESCE($3, start_date),
-          end_date = COALESCE($4, end_date),
-          frequency = COALESCE($5, frequency),
-          reporting_date = COALESCE($6, reporting_date)
-      WHERE id = $7
+          circular_id = COALESCE($2, circular_id),
+          default_due_date = COALESCE($3, default_due_date),
+          start_date = COALESCE($4, start_date),
+          end_date = COALESCE($5, end_date),
+          frequency = COALESCE($6, frequency),
+          reporting_date = COALESCE($7, reporting_date)
+      WHERE id = $8
       RETURNING *
     `;
     const result = await this.db.query(query, [
       updateTaskSetDto.name || null,
+      updateTaskSetDto.circular_id || null,
       updateTaskSetDto.default_due_date || null,
       updateTaskSetDto.start_date || null,
       updateTaskSetDto.end_date || null,

@@ -150,8 +150,8 @@ export class AssignmentsService {
     return result.rows;
   }
 
-  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string }) {
-    const { page, limit, branchId, search } = params;
+  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string }) {
+    const { page, limit, branchId, search, status } = params;
     const offset = (page - 1) * limit;
 
     let conditions = ['1=1'];
@@ -161,6 +161,11 @@ export class AssignmentsService {
     if (branchId) {
       conditions.push(`a.branch_id = $${paramIndex++}`);
       values.push(branchId);
+    }
+
+    if (status) {
+      conditions.push(`a.status = $${paramIndex++}`);
+      values.push(status);
     }
 
     if (search) {

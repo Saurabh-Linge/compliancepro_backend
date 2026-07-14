@@ -109,8 +109,8 @@ export class TasksService {
     auditAreaId?: number
   ) {
     const res = await this.db.query(
-      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, priority, risk_category, business_risk, control_risk, audit_area_id) 
-       VALUES ($1, $2, $3, true, $4, $5, $6, $7, $8) 
+      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, status, priority, risk_category, business_risk, control_risk, audit_area_id) 
+       VALUES ($1, $2, $3, false, 'PENDING', $4, $5, $6, $7, $8) 
        RETURNING *`,
       [description, circularId, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null],
     );

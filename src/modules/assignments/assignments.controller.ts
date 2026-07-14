@@ -32,7 +32,8 @@ export class AssignmentsController {
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Req() req: FastifyRequest,
-    @Query('search') search?: string
+    @Query('search') search?: string,
+    @Query('status') status?: string
   ) {
     const user = (req as any).user;
     let finalBranchId = branchId ? parseInt(branchId, 10) : undefined;
@@ -49,7 +50,8 @@ export class AssignmentsController {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       branchId: finalBranchId,
-      search
+      search,
+      status
     });
   }
 

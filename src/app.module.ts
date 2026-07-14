@@ -27,6 +27,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ScraperModule } from './modules/scraper/scraper.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { MasterBulkUploadModule } from './modules/master-bulk-upload/master-bulk-upload.module';
 
 @Module({
   imports: [
@@ -66,7 +67,8 @@ import { ReportsModule } from './modules/reports/reports.module';
     AuditAreasModule,
     ScheduleModule.forRoot(),
     ScraperModule,
-    ReportsModule
+    ReportsModule,
+    MasterBulkUploadModule
   ],
   controllers: [AppController],
   providers: [

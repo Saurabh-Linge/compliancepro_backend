@@ -39,13 +39,40 @@ export class DashboardService {
       assignmentParams.push(userId);
       recentAssignmentsQuery += ` WHERE bd.co_user_id = $1 ORDER BY a.id DESC LIMIT 8`;
       recentAssignmentsParams.push(userId);
-    } else if (role === 'BRANCH_USER' && branchId) {
+    } else if ((role === 'BRANCH' || role === 'BRANCH_USER') && branchId) {
       assignmentStatsQuery += ` WHERE a.branch_id = $1`;
       assignmentParams.push(branchId);
       recentAssignmentsQuery += ` WHERE a.branch_id = $1 ORDER BY a.id DESC LIMIT 8`;
       recentAssignmentsParams.push(branchId);
     } else {
       recentAssignmentsQuery += ` ORDER BY a.id DESC LIMIT 8`;
+    }
+
+    let taskCountQuery = 'SELECT count(*) as count FROM compliance_task';
+    let pendingTaskCountQuery = "SELECT count(*) as count FROM compliance_task WHERE status = 'PENDING'";
+    let approvedTaskCountQuery = "SELECT count(*) as count FROM compliance_task WHERE status = 'APPROVED'";
+    let taskParams: any[] = [];
+
+    if ((role === 'BRANCH' || role === 'BRANCH_USER') && branchId) {
+      taskCountQuery = `
+        SELECT count(at.id) as count 
+        FROM assignment_task at 
+        JOIN assignment a ON at.assignment_id = a.id 
+        WHERE a.branch_id = $1
+      `;
+      pendingTaskCountQuery = `
+        SELECT count(at.id) as count 
+        FROM assignment_task at 
+        JOIN assignment a ON at.assignment_id = a.id 
+        WHERE a.branch_id = $1 AND at.status = 'PENDING'
+      `;
+      approvedTaskCountQuery = `
+        SELECT count(at.id) as count 
+        FROM assignment_task at 
+        JOIN assignment a ON at.assignment_id = a.id 
+        WHERE a.branch_id = $1 AND at.status = 'COMPLETED'
+      `;
+      taskParams = [branchId];
     }
 
     const authorityReportsQuery = `
@@ -97,9 +124,9 @@ export class DashboardService {
       authorityReportsRes
     ] = await Promise.all([
       this.db.query('SELECT count(*) as count FROM circular'),
-      this.db.query('SELECT count(*) as count FROM compliance_task'),
-      this.db.query("SELECT count(*) as count FROM compliance_task WHERE status = 'PENDING'"),
-      this.db.query("SELECT count(*) as count FROM compliance_task WHERE status = 'APPROVED'"),
+      this.db.query(taskCountQuery, taskParams),
+      this.db.query(pendingTaskCountQuery, taskParams),
+      this.db.query(approvedTaskCountQuery, taskParams),
       this.db.query('SELECT count(*) as count FROM task_set'),
       this.db.query('SELECT count(*) as count FROM branch_dept'),
       this.db.query(`

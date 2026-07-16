@@ -5,6 +5,7 @@ import { map } from 'rxjs/operators';
 import { CircularsService, CircularUploadFile } from './circulars.service';
 import { AiService } from '../../core/ai/ai.service';
 import { PdfService } from '../../core/pdf/pdf.service';
+import { Public } from '../../core/auth/public.decorator';
 import type { FastifyRequest } from 'fastify';
 
 @Controller('circulars')
@@ -204,6 +205,18 @@ export class CircularsController {
     const deleted = await this.circularsService.delete(+id);
     if (!deleted) throw new NotFoundException(`Circular ${id} not found`);
     return { success: true };
+  }
+
+  @Public()
+  @Post('reprocess-all')
+  async reprocessAll() {
+    return this.circularsService.reprocessAll();
+  }
+
+  @Public()
+  @Post(':id/reprocess')
+  async reprocessSingle(@Param('id') id: string) {
+    return this.circularsService.reprocessSingle(+id);
   }
 
   private async extractMultipartPayload(req: any) {

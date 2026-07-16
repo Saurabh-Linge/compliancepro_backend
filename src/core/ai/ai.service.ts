@@ -13,6 +13,7 @@ export interface ExtractedTask {
 export interface ExtractedData {
   reference_no: string | null;
   title?: string | null;
+  published_date?: string | null;
   priority: string;
   circular_type: number | null;
   description: string;
@@ -90,6 +91,7 @@ Return ONLY a valid JSON object matching this exact schema:
 {
   "reference_no": "string (The official circular reference number, e.g. RBI/2023-24/123 or DOR.ACC.REC.102/21.04.018/2025-26. Look closely at the header and first page, do not return null if a reference number is mentioned) or null",
   "title": "string (The official name/subject of the circular, e.g. Information Technology Governance in Banks. Do not return null if a title is mentioned) or null",
+  "published_date": "string (The official publication date from the circular in YYYY-MM-DD format, e.g. 2026-06-24. Look at the header or near the reference number) or null",
   "priority": "High, Medium, or General",
   "circular_type": null,
   "description": "A short 1-2 sentence summary of the circular",
@@ -104,7 +106,7 @@ No explanation, no markdown, no extra text. Only the JSON object.`,
       },
       {
         role: 'user',
-        content: `Circular Text:\n${text}\n\nJSON:`,
+        content: `Circular Text:\n${text.substring(0, 10000)}\n\nJSON:`,
       },
     ];
 
@@ -259,6 +261,8 @@ No explanation, no markdown, no extra text. Only the JSON object.`,
         
         return {
           reference_no: parsed.reference_no || null,
+          title: parsed.title || null,
+          published_date: parsed.published_date || null,
           priority: parsed.priority || 'General',
           circular_type: parsed.circular_type || null,
           description: parsed.description || '',

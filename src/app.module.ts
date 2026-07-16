@@ -43,6 +43,7 @@ import { MasterBulkUploadModule } from './modules/master-bulk-upload/master-bulk
           port: config.get<number>('REDIS_PORT', 6379),
           password: config.get<string>('REDIS_PASSWORD'),
         },
+        prefix: config.get<string>('BULL_PREFIX', 'bull'),
       }),
       inject: [ConfigService],
     }),

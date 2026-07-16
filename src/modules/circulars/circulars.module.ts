@@ -8,6 +8,7 @@ import { CircularsProcessor } from './circulars.processor';
   imports: [
     BullModule.registerQueue({
       name: 'circulars',
+      prefix: process.env.BULL_PREFIX || 'bull',
     }),
   ],
   controllers: [CircularsController],

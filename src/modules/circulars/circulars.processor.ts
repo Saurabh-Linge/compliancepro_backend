@@ -9,7 +9,10 @@ import { PdfService } from '../../core/pdf/pdf.service';
 import { AiService } from '../../core/ai/ai.service';
 import { DatabaseService } from '../../core/database/database.service';
 
-@Processor('circulars', { concurrency: parseInt(process.env.WORKER_CONCURRENCY || '1', 10) })
+@Processor('circulars', { 
+  concurrency: parseInt(process.env.WORKER_CONCURRENCY || '1', 10),
+  prefix: process.env.BULL_PREFIX || 'bull'
+})
 export class CircularsProcessor extends WorkerHost {
   private readonly logger = new Logger(CircularsProcessor.name);
 
@@ -80,27 +83,38 @@ export class CircularsProcessor extends WorkerHost {
         this.logger.log(`[CircularsProcessor] AI extracted metadata and ${tasks.length} tasks from ${fileName} in ${processingTimeMs}ms`);
         await this.logProgress(data.circularId, 'PROCESSING', `Found metadata and ${tasks.length} tasks in ${fileName}`);
 
+        let extractedTitle = extractedData.title || null;
+        let extractedDesc = extractedData.description || null;
+
+        // Fallback: If title is missing/null but description is a short title-like string, use description as title
+        if (!extractedTitle && extractedDesc && extractedDesc.length < 180) {
+          this.logger.log(`[Fallback] Title is null but description is short (${extractedDesc.length} chars). Using description as title.`);
+          extractedTitle = extractedDesc;
+        }
+
         await this.db.query(
           `UPDATE circular SET 
-            reference_no = CASE WHEN reference_no IS NULL OR reference_no = '' THEN COALESCE($1, reference_no) ELSE reference_no END, 
+            reference_no = COALESCE($1, reference_no), 
             priority = COALESCE($2, priority),
             circular_type = COALESCE($3, circular_type),
-            description = CASE WHEN description = 'Automated scrape from RBI website' THEN $4 ELSE COALESCE($4, description) END,
+            description = COALESCE($4, description),
             is_penalty_applicable = COALESCE($5, is_penalty_applicable),
             penalty_amount = COALESCE($6, penalty_amount),
             penalty_description = COALESCE($7, penalty_description),
-            title = CASE WHEN title IS NULL OR title = '' OR title = reference_no OR description = 'Automated scrape from RBI website' THEN COALESCE($8, title) ELSE title END
+            title = COALESCE($8, title),
+            published_date = COALESCE($10, published_date)
            WHERE id = $9`,
           [
             extractedData.reference_no || (extractedData as any).referenceNo || null,
             extractedData.priority,
             extractedData.circular_type,
-            extractedData.description || 'Automated scrape from RBI website',
+            extractedDesc || 'Automated scrape from RBI website',
             extractedData.is_penalty_applicable,
             extractedData.penalty_amount,
             extractedData.penalty_description,
-            extractedData.title || null,
-            data.circularId
+            extractedTitle || null,
+            data.circularId,
+            extractedData.published_date || null
           ]
         );
         
@@ -291,27 +305,38 @@ export class CircularsProcessor extends WorkerHost {
       const tasks = extractedData.tasks || [];
       await this.logProgress(circular.id, 'PROCESSING', `Found metadata and ${tasks.length} tasks`);
 
+      let extractedTitle = extractedData.title || null;
+      let extractedDesc = extractedData.description || null;
+
+      // Fallback: If title is missing/null but description is a short title-like string, use description as title
+      if (!extractedTitle && extractedDesc && extractedDesc.length < 180) {
+        this.logger.log(`[Fallback] Title is null but description is short (${extractedDesc.length} chars). Using description as title.`);
+        extractedTitle = extractedDesc;
+      }
+
       await this.db.query(
         `UPDATE circular SET 
-          reference_no = CASE WHEN reference_no IS NULL OR reference_no = '' THEN COALESCE($1, reference_no) ELSE reference_no END, 
+          reference_no = COALESCE($1, reference_no), 
           priority = COALESCE($2, priority),
           circular_type = COALESCE($3, circular_type),
-          description = CASE WHEN description = 'Automated scrape from RBI website' THEN $4 ELSE COALESCE($4, description) END,
+          description = COALESCE($4, description),
           is_penalty_applicable = COALESCE($5, is_penalty_applicable),
           penalty_amount = COALESCE($6, penalty_amount),
           penalty_description = COALESCE($7, penalty_description),
-          title = CASE WHEN title IS NULL OR title = '' OR title = reference_no OR description = 'Automated scrape from RBI website' THEN COALESCE($8, title) ELSE title END
+          title = COALESCE($8, title),
+          published_date = COALESCE($10, published_date)
          WHERE id = $9`,
         [
           extractedData.reference_no || (extractedData as any).referenceNo || null,
           extractedData.priority,
           extractedData.circular_type,
-          extractedData.description || 'Automated scrape from RBI website',
+          extractedDesc || 'Automated scrape from RBI website',
           extractedData.is_penalty_applicable,
           extractedData.penalty_amount,
           extractedData.penalty_description,
-          extractedData.title || null,
-          circular.id
+          extractedTitle || null,
+          circular.id,
+          extractedData.published_date || null
         ]
       );
 

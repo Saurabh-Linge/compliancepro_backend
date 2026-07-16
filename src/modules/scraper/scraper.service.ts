@@ -15,8 +15,10 @@ export class ScraperService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    if (process.env.ENABLE_SCRAPER === 'false') {
-      this.logger.log('ENABLE_SCRAPER is false. This instance will only run as a background worker.');
+    const scraperFlag = String(process.env.ENABLE_SCRAPER).trim().toLowerCase();
+
+    if (scraperFlag === 'false') {
+      this.logger.log('Scraper is disabled (ENABLE_SCRAPER=false). This instance will only run as a background worker.');
       return;
     }
     this.logger.log('Starting continuous RBI scraping service (Historical + Live)...');

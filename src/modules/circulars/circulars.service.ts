@@ -18,7 +18,7 @@ export class CircularsService {
     private readonly db: DatabaseService,
     private readonly storageService: StorageService,
     @InjectQueue('circulars') private readonly circularsQueue: Queue
-  ) {}
+  ) { }
 
   async create(input: {
     authority_id: number;
@@ -102,7 +102,7 @@ export class CircularsService {
     is_active?: boolean;
   }, files: CircularUploadFile[]) {
     this.logger.log(`[createWithFiles] Started for title: ${input.title} with ${files.length} files`);
-    
+
     // 1. Upload all files to MinIO (fast — just storage, no OCR/AI)
     const storedFiles: { file_name: string; file_url: string; mime_type: string }[] = [];
 
@@ -254,10 +254,10 @@ export class CircularsService {
       FROM circular c
       LEFT JOIN authority a ON c.authority_id = a.id
       ${whereClause}
-      ORDER BY c.id DESC
+      ORDER BY CASE WHEN c.ai_processing_status = 'COMPLETED' THEN 1 ELSE 2 END ASC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
-    
+
     values.push(limit, offset);
     const result = await this.db.query(query, values);
 
@@ -412,5 +412,54 @@ export class CircularsService {
     `;
     const result = await this.db.query(query, values);
     return result.rows[0];
+  }
+
+  async reprocessAll(): Promise<{ success: boolean; message: string }> {
+    const circulars = await this.findAll();
+    let count = 0;
+    for (const c of circulars) {
+      const filesResult = await this.db.query(
+        `SELECT file_url FROM circular_file WHERE circular_id = $1`,
+        [c.id]
+      );
+      const fileUrls = filesResult.rows.map(f => f.file_url);
+      if (fileUrls.length > 0) {
+        await this.circularsQueue.add('processCircularFiles', {
+          circularId: c.id,
+          fileUrls,
+        });
+
+        // Reset processing status back to QUEUED
+        await this.db.query(
+          `UPDATE circular SET ai_processing_status = 'QUEUED' WHERE id = $1`,
+          [c.id]
+        );
+        count++;
+      }
+    }
+    return { success: true, message: `Enqueued re-processing jobs for ${count} circular(s).` };
+  }
+
+  async reprocessSingle(id: number): Promise<{ success: boolean; message: string }> {
+    const filesResult = await this.db.query(
+      `SELECT file_url FROM circular_file WHERE circular_id = $1`,
+      [id]
+    );
+    const fileUrls = filesResult.rows.map(f => f.file_url);
+    if (fileUrls.length > 0) {
+      await this.circularsQueue.add(
+        'processCircularFiles',
+        { circularId: id, fileUrls },
+        { priority: 1 }
+      );
+
+      // Reset processing status back to QUEUED
+      await this.db.query(
+        `UPDATE circular SET ai_processing_status = 'QUEUED' WHERE id = $1`,
+        [id]
+      );
+      return { success: true, message: `Enqueued high-priority re-processing job for circular ${id}.` };
+    }
+    return { success: false, message: `No files found for circular ${id}.` };
   }
 }

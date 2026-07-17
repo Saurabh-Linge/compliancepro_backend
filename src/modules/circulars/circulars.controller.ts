@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Patch, Param, Req, BadRequestException, NotFoundException, Sse, MessageEvent, Query } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Param, Req, Body, BadRequestException, NotFoundException, Sse, MessageEvent, Query } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Observable, fromEvent } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -141,6 +141,61 @@ export class CircularsController {
     const result = await this.aiService.chatWithCircular(parseInt(id, 10), question);
     // result contains { thoughts, response } — thoughts may be empty string if model didn't think
     return result;
+  }
+
+  @Post(':id/compare')
+  async compareCirculars(@Param('id') id: string, @Req() req: FastifyRequest) {
+    const fastifyReq = req as any;
+    if (typeof fastifyReq.isMultipart !== 'function' || !fastifyReq.isMultipart()) {
+      throw new BadRequestException('Request must be multipart/form-data');
+    }
+    const part = await fastifyReq.file();
+    if (!part) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const buffer = await part.toBuffer();
+    
+    // 1. Extract text from revised PDF
+    const revisedText = await this.pdfService.extractText(buffer);
+    
+    const protocol = req.protocol || 'http';
+    const host = req.headers['host'] || req.headers['x-forwarded-host'] || 'localhost:3580';
+    const requestBaseUrl = `${protocol}://${host}`;
+
+    // 2. Call AI Service to compare old vs revised circular text
+    const comparisonResult = await this.aiService.compareCirculars(
+      parseInt(id, 10),
+      revisedText,
+      requestBaseUrl
+    );
+    
+    return comparisonResult;
+  }
+
+  @Post(':id/compare-stored')
+  async compareStoredCirculars(
+    @Param('id') id: string,
+    @Body('targetCircularId') targetCircularId: string | number,
+    @Req() req: FastifyRequest
+  ) {
+    if (!targetCircularId) {
+      throw new BadRequestException('Missing targetCircularId');
+    }
+
+    const protocol = req.protocol || 'http';
+    const host = req.headers['host'] || req.headers['x-forwarded-host'] || 'localhost:3580';
+    const requestBaseUrl = `${protocol}://${host}`;
+
+    try {
+      return await this.aiService.compareStoredCirculars(
+        parseInt(id, 10),
+        typeof targetCircularId === 'string' ? parseInt(targetCircularId, 10) : Number(targetCircularId),
+        requestBaseUrl
+      );
+    } catch (err: any) {
+      console.error(`[CircularsController] compare-stored error:`, err);
+      throw new BadRequestException(err.message || 'Failed to compare stored circulars');
+    }
   }
 
   @Post('extract-metadata')

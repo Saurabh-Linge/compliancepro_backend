@@ -720,4 +720,188 @@ No explanation, no markdown, no extra text. Only the JSON object.`,
       return { reference_no: null, title: null, published_date: null };
     }
   }
+
+  async compareCirculars(oldCircularId: number, revisedText: string, requestBaseUrl?: string): Promise<{ thoughts: string; response: string }> {
+    // 1. Fetch old circular details
+    const circularResult = await this.db.query(
+      `SELECT c.title, c.description, c.published_date, c.priority,
+              a.name AS authority_name, c.reference_no
+       FROM circular c
+       LEFT JOIN authority a ON c.authority_id = a.id
+       WHERE c.id = $1`,
+      [oldCircularId],
+    );
+    const circ = circularResult.rows[0];
+    if (!circ) {
+      throw new Error(`Reference circular ${oldCircularId} not found`);
+    }
+
+    // 2. Fetch old circular tasks
+    const tasksResult = await this.db.query(
+      `SELECT description FROM compliance_task
+       WHERE circular_id = $1 AND is_discarded = FALSE
+       ORDER BY id`,
+      [oldCircularId],
+    );
+    const oldTasks = tasksResult.rows.map((r: any) => r.description);
+
+    // 3. Try to fetch old circular raw text on the fly
+    let oldPdfText = '';
+    try {
+      const fileResult = await this.db.query(
+        'SELECT file_url FROM circular_file WHERE circular_id = $1 LIMIT 1',
+        [oldCircularId],
+      );
+      if (fileResult.rows.length > 0) {
+        const fileUrl = fileResult.rows[0].file_url;
+        try {
+          const buffer = await this.getCircularPdfBuffer(fileUrl, requestBaseUrl);
+          oldPdfText = await this.pdfService.extractText(buffer);
+          if (oldPdfText.length > 25000) {
+            oldPdfText = oldPdfText.substring(0, 25000) + '\n... [TRUNCATED]';
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to read/download old circular PDF for comparison: ${fileUrl}`, err);
+        }
+      }
+    } catch (err) {
+      this.logger.warn('Failed to query old circular file details for comparison', err);
+    }
+
+    const circularInfo = [
+      `Title: ${circ.title}`,
+      `Authority: ${circ.authority_name ?? 'N/A'}`,
+      `Reference No: ${circ.reference_no ?? 'N/A'}`,
+      `Date: ${circ.published_date}`,
+      circ.description ? `Summary: ${circ.description}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const oldTasksBlock = oldTasks.length > 0
+      ? oldTasks.map((t, i) => `${i + 1}. ${t}`).join('\n')
+      : 'No tasks extracted.';
+
+    const systemPrompt = `You are a professional regulatory compliance auditor.
+Your job is to compare an OLD regulatory circular with a REVISED regulatory circular and identify ONLY compliance-impacting changes.
+
+OLD CIRCULAR DETAILS:
+${circularInfo}
+
+OLD CIRCULAR EXTRACTED COMPLIANCE TASKS:
+${oldTasksBlock}
+
+OLD CIRCULAR PDF TEXT EXCERPT (Use for validation):
+${oldPdfText || 'Not available'}
+
+REVISED CIRCULAR TEXT:
+${revisedText.substring(0, 25000)}
+
+INSTRUCTIONS:
+1. Conduct a rigorous comparison between the old circular and the revised text.
+2. Focus ONLY on changes that affect compliance (obligations, deadlines, penalties, audit areas, reporting requirements, or entity applicability).
+3. Do NOT mention editorial changes, formatting changes, or non-substantive text rewrites.
+4. Structure the comparison report professionally in Markdown using clear headers, bullet points, and a comparison table:
+   - **Executive Summary**: A concise summary of the key changes.
+   - **Compliance Changes Table**: Compare Old vs Revised requirements (Columns: Area, Old Requirement, Revised Requirement, Impact Severity).
+   - **New Obligations**: Any newly added tasks or rules.
+   - **Removed/Relaxed Obligations**: Any rules or tasks from the old circular that have been deleted or relaxed.
+   - **Deadline or Penalty Changes**: Specific changes to timelines or penalty amounts.
+5. If there are no compliance-impacting changes, explicitly state that. Do not invent differences.`;
+
+    const messages = [
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      {
+        role: 'user',
+        content: 'Identify and report the compliance-impacting differences between the old and revised circulars.'
+      }
+    ];
+
+    const response = await this.fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify({
+        model: this.modelName,
+        messages,
+        stream: false,
+        temperature: 0.2,
+        max_tokens: 1500,
+        top_p: 0.9,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${this.provider} Compare API error: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const raw = (data.choices?.[0]?.message?.content || '') as string;
+
+    const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/i);
+    const thoughts = thinkMatch ? thinkMatch[1].trim() : '';
+    const answer = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    return { thoughts, response: answer };
+  }
+
+  private async getCircularPdfBuffer(fileUrl: string, requestBaseUrl?: string): Promise<Buffer> {
+    let cleanPath = fileUrl;
+    if (fileUrl.startsWith('http')) {
+      cleanPath = new URL(fileUrl).pathname;
+    }
+    cleanPath = cleanPath.replace(/^\/+/, '');
+    const absolutePath = path.join(process.cwd(), cleanPath);
+
+    if (fs.existsSync(absolutePath)) {
+      return fs.readFileSync(absolutePath);
+    }
+
+    // Fallback: If not found locally, see if we can fetch it over HTTP
+    let downloadUrl = '';
+    if (fileUrl.startsWith('http')) {
+      downloadUrl = fileUrl;
+    } else {
+      const downloadBase = this.configService.get('FILE_DOWNLOAD_BASE_URL');
+      if (downloadBase) {
+        downloadUrl = downloadBase.replace(/\/+$/, '') + '/' + fileUrl.replace(/^\/+/, '');
+      }
+    }
+
+    if (downloadUrl) {
+      this.logger.log(`Circular PDF not found locally at ${absolutePath}. Attempting to fetch remote PDF: ${downloadUrl}`);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch remote PDF: ${downloadUrl} (Status: ${response.status})`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+
+    throw new Error(`PDF file does not exist locally and no remote download base is configured: ${fileUrl}`);
+  }
+
+  async getCircularText(circularId: number, requestBaseUrl?: string): Promise<string> {
+    const fileResult = await this.db.query(
+      `SELECT file_url FROM circular_file WHERE circular_id = $1 LIMIT 1`,
+      [circularId],
+    );
+    if (fileResult.rows.length === 0) {
+      throw new Error(`No PDF file registered for circular ID ${circularId}`);
+    }
+    const fileUrl = fileResult.rows[0].file_url;
+    const buffer = await this.getCircularPdfBuffer(fileUrl, requestBaseUrl);
+    return this.pdfService.extractText(buffer);
+  }
+
+  async compareStoredCirculars(oldCircularId: number, targetCircularId: number, requestBaseUrl?: string): Promise<{ thoughts: string; response: string }> {
+    const targetText = await this.getCircularText(targetCircularId, requestBaseUrl);
+    return this.compareCirculars(oldCircularId, targetText, requestBaseUrl);
+  }
 }

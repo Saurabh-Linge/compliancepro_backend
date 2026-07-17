@@ -27,6 +27,12 @@ export class CircularsProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
+    // In local development (ENABLE_SCRAPER=false), skip all jobs to avoid
+    // consuming from the shared production Redis queue.
+    if (process.env.ENABLE_SCRAPER === 'false') {
+      this.logger.warn(`[CircularsProcessor] ENABLE_SCRAPER=false — skipping job ${job.name} (ID: ${job.id}) in dev mode.`);
+      return;
+    }
     this.logger.log(`[CircularsProcessor] Received job: ${job.name} (Job ID: ${job.id})`);
     try {
       if (job.name === 'processCircularFiles') {

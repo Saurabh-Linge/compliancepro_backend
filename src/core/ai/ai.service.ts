@@ -84,7 +84,7 @@ export class AiService {
     const messages = [
       {
         role: 'system',
-        content: `You are a compliance analyst. Read the following regulatory circular and extract metadata and actionable compliance tasks.
+        content: `You are a compliance analyst. Read the following regulatory circular and extract metadata.
 IMPORTANT: This includes any regulatory amendments, rule changes, procedural updates, or new guidelines that a bank or organization must review or implement.
 
 Return ONLY a valid JSON object matching this exact schema:
@@ -97,10 +97,7 @@ Return ONLY a valid JSON object matching this exact schema:
   "description": "A short 1-2 sentence summary of the circular",
   "is_penalty_applicable": boolean,
   "penalty_amount": number (or null),
-  "penalty_description": "string (or null)",
-  "tasks": [
-    { "description": "task 1" }
-  ]
+  "penalty_description": "string (or null)"
 }
 No explanation, no markdown, no extra text. Only the JSON object.`,
       },

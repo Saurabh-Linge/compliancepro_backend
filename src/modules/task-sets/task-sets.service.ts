@@ -124,11 +124,20 @@ export class TaskSetsService {
   }
 
   async reopen(id: number) {
-    // Set all assignments for this task_set_id to PENDING_RECOMPLIANCE and clear review remarks
+    // 1. Update assignment status and clear review details
     await this.db.query(`
       UPDATE assignment 
       SET status = 'PENDING_RECOMPLIANCE', review_remark = NULL, reviewed_at = NULL
       WHERE task_set_id = $1
+    `, [id]);
+
+    // 2. Reset status, completed_at, compliance_status, remarks, and review_status for all tasks of these assignments
+    await this.db.query(`
+      UPDATE assignment_task
+      SET status = 'PENDING', completed_at = NULL, compliance_status = 'PENDING', remarks = NULL, review_status = NULL
+      WHERE assignment_id IN (
+        SELECT id FROM assignment WHERE task_set_id = $1
+      )
     `, [id]);
     
     return { reopened: true };

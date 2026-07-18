@@ -130,12 +130,10 @@ export class CircularsProcessor extends WorkerHost {
         );
         await this.logProgress(data.circularId, 'PROCESSING', `Completed processing file ${fileName} (Time taken: ${processingTimeMs}ms)`);
 
-        // No longer generate tasks automatically through AI
-        /*
+        // Generate tasks automatically through AI
         for (const task of tasks) {
           if (await this.saveTask(data.circularId, task.description)) savedCount++;
         }
-        */
       } catch (err: any) {
         this.logger.error(`[CircularsProcessor] Error processing file ${fileName}`, err);
         await this.logProgress(data.circularId, 'PROCESSING', `Failed to process file ${fileName}: ${err.message}`);
@@ -349,14 +347,13 @@ export class CircularsProcessor extends WorkerHost {
         ]
       );
 
-      // No longer generate tasks automatically through AI
-      /*
+      // Generate tasks automatically through AI
+      let savedCount = 0;
       for (const task of tasks) {
         if (await this.saveTask(circular.id, task.description)) savedCount++;
       }
-      */
 
-      await this.logProgress(circular.id, 'COMPLETED', `Finished circular processing: AI metadata updated successfully`);
+      await this.logProgress(circular.id, 'COMPLETED', `Finished circular processing: AI metadata updated and ${savedCount} tasks generated successfully`);
     } catch (error: any) {
       await this.logProgress(circular.id, 'FAILED', `Processing failed: ${error.message}`);
       throw error; // rethrow so BullMQ retries the job

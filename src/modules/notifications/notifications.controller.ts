@@ -23,5 +23,16 @@ export class NotificationsController {
   async markAsRead(@Param('id') id: string) {
     return this.notificationsService.markAsRead(parseInt(id, 10));
   }
+
+  @Put('read-all')
+  async markAllAsRead(@Req() req: any) {
+    const user = req.user;
+    const userId: string = user?.sub || user?.id || '';
+    const role: string = user?.role || '';
+    const rawBranchId = user?.branchId ?? user?.branch_id;
+    const branchId: number | null = rawBranchId ? Number(rawBranchId) : null;
+
+    return this.notificationsService.markAllAsReadForUser(userId, role, branchId);
+  }
 }
 

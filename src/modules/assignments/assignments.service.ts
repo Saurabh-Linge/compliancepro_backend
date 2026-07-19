@@ -298,6 +298,10 @@ export class AssignmentsService {
 
   async reviewAssignment(assignmentId: number, action: 'ACCEPT' | 'REJECT' | 'ESCALATE', remark: string) {
     const result = await this.db.transaction(async (client) => {
+      // Get current status before update
+      const currentRes = await client.query(`SELECT status FROM assignment WHERE id = $1`, [assignmentId]);
+      const previousStatus = currentRes.rows[0]?.status;
+
       let status = 'COMPLETED';
       if (action === 'REJECT') status = 'REJECTED';
       if (action === 'ESCALATE') status = 'ESCALATED_TO_CCO';
@@ -345,9 +349,10 @@ export class AssignmentsService {
         }
       }
 
-      return updated;
+      return { updated, previousStatus };
     });
-    const updated = result;
+
+    const { updated, previousStatus } = result;
 
     const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
     const tsRes = await this.db.query(taskSetQuery, [assignmentId]);
@@ -357,7 +362,8 @@ export class AssignmentsService {
       assignmentId,
       status: updated.status,
       branchId: updated.branch_id,
-      taskSetName
+      taskSetName,
+      previousStatus
     });
 
     // Emit re-compliance notification for branch when rejected
@@ -366,7 +372,8 @@ export class AssignmentsService {
         assignmentId,
         branchId: updated.branch_id,
         taskSetName,
-        reviewRemark: remark
+        reviewRemark: remark,
+        previousStatus
       });
     }
 

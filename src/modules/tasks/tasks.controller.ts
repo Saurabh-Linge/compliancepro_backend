@@ -1,13 +1,17 @@
 import { Controller, Get, Post, Patch, Put, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 import { TasksService } from './tasks.service';
+import { AiService } from '../../core/ai/ai.service';
 
 @Controller('tasks')
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly aiService: AiService,
+  ) {}
 
   @Get('stats')
-  async getStats() {
-    return this.tasksService.getStats();
+  async getStats(@Query('circular_id') circularId?: string) {
+    return this.tasksService.getStats(circularId ? parseInt(circularId, 10) : undefined);
   }
 
   @Get()
@@ -58,5 +62,19 @@ export class TasksController {
     @Body('audit_area_id') auditAreaId?: number
   ) {
     return this.tasksService.update(id, description, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId);
+  }
+
+  @Post('extract-from-text')
+  async extractFromText(@Body('text') text: string) {
+    const tasks = await this.aiService.extractTasksFromChatText(text);
+    return { tasks };
+  }
+
+  @Post('bulk')
+  async createBulk(
+    @Body('circular_id', ParseIntPipe) circularId: number,
+    @Body('tasks') tasks: { description: string }[],
+  ) {
+    return this.tasksService.createBulk(circularId, tasks);
   }
 }

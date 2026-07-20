@@ -87,6 +87,8 @@ export class CircularsController {
     @Query('authority_id') authorityId?: string,
     @Query('is_active') isActive?: string,
     @Query('is_applicable') isApplicable?: string,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
   ) {
     return this.circularsService.findAllPaginated({
       page: parseInt(page, 10),
@@ -96,6 +98,8 @@ export class CircularsController {
       authority_id: authorityId ? parseInt(authorityId, 10) : undefined,
       is_active: isActive !== undefined ? isActive === 'true' : undefined,
       is_applicable: isApplicable !== undefined ? isApplicable === 'true' : undefined,
+      startDate,
+      endDate,
     });
   }
 

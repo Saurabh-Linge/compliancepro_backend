@@ -897,6 +897,69 @@ INSTRUCTIONS:
     return this.pdfService.extractText(buffer);
   }
 
+  async extractTasksFromChatText(text: string): Promise<string[]> {
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a compliance assistant. Extract all actionable compliance tasks, audit checks, or obligations from the user's text.
+Return ONLY a valid JSON object matching this schema:
+{
+  "tasks": ["Task 1 description", "Task 2 description", ...]
+}
+Ensure each task description is clear, concise, and complete.
+No markdown, no explanation. Only the JSON object.`,
+      },
+      {
+        role: 'user',
+        content: `Text:\n${text}`,
+      },
+    ];
+
+    try {
+      const response = await this.fetchWithRetry(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: this.modelName,
+          messages,
+          response_format: { type: 'json_object' },
+          stream: false,
+          temperature: 0,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI completion error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const raw = (data.choices?.[0]?.message?.content || '').trim();
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed.tasks) ? parsed.tasks : [];
+    } catch (err) {
+      this.logger.error('Failed to extract tasks from chat text via AI', err);
+      return this.fallbackParseText(text);
+    }
+  }
+
+  private fallbackParseText(text: string): string[] {
+    const tasks: string[] = [];
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('-') || trimmed.startsWith('*') || /^\d+\./.test(trimmed)) {
+        const cleaned = trimmed.replace(/^[-*\d.]+\s*/, '').trim();
+        if (cleaned.length > 10) {
+          tasks.push(cleaned);
+        }
+      }
+    }
+    return tasks;
+  }
+
   async compareStoredCirculars(oldCircularId: number, targetCircularId: number, requestBaseUrl?: string): Promise<{ thoughts: string; response: string }> {
     const targetText = await this.getCircularText(targetCircularId, requestBaseUrl);
     return this.compareCirculars(oldCircularId, targetText, requestBaseUrl);

@@ -191,7 +191,17 @@ export class CircularsService {
     return result.rows;
   }
 
-  async findAllPaginated(params: { page: number; limit: number; search?: string; hasTasks?: boolean; authority_id?: number; is_active?: boolean; is_applicable?: boolean }) {
+  async findAllPaginated(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    hasTasks?: boolean;
+    authority_id?: number;
+    is_active?: boolean;
+    is_applicable?: boolean;
+    startDate?: string;
+    endDate?: string;
+  }) {
     const { page, limit, search, hasTasks } = params;
     const offset = (page - 1) * limit;
 
@@ -212,6 +222,18 @@ export class CircularsService {
     if (params.authority_id) {
       conditions.push(`c.authority_id = $${paramIndex}`);
       values.push(params.authority_id);
+      paramIndex++;
+    }
+
+    if (params.startDate) {
+      conditions.push(`c.published_date >= $${paramIndex}`);
+      values.push(params.startDate);
+      paramIndex++;
+    }
+
+    if (params.endDate) {
+      conditions.push(`c.published_date <= $${paramIndex}`);
+      values.push(params.endDate);
       paramIndex++;
     }
 
@@ -338,7 +360,7 @@ export class CircularsService {
 
     // Step 2: Fetch the root circular
     const rootResult = await this.db.query(
-      `SELECT id, title, reference_no, published_date, circular_nature, amendment_notes, ai_processing_status
+      `SELECT id, title, reference_no, published_date, circular_nature, amendment_notes, ai_processing_status, pdf_url
        FROM circular WHERE id = $1`,
       [rootId]
     );
@@ -356,7 +378,7 @@ export class CircularsService {
          JOIN chain ON chain.amendment_circular_id = ca2.original_circular_id
        )
        SELECT c.id, c.title, c.reference_no, c.published_date,
-              c.circular_nature, c.amendment_notes, c.ai_processing_status,
+              c.circular_nature, c.amendment_notes, c.ai_processing_status, c.pdf_url,
               ch.depth
        FROM chain ch
        JOIN circular c ON c.id = ch.amendment_circular_id

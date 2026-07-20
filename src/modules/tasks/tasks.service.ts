@@ -80,15 +80,21 @@ export class TasksService {
   }
 
 
-  async getStats() {
-    const totalQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE`;
-    const pendingQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE AND is_approved = FALSE`;
-    const approvedQuery = `SELECT COUNT(*) FROM compliance_task WHERE is_discarded = FALSE AND is_approved = TRUE`;
+  async getStats(circularId?: number) {
+    let whereClause = 'WHERE is_discarded = FALSE';
+    const values: any[] = [];
+    if (circularId) {
+      whereClause += ' AND circular_id = $1';
+      values.push(circularId);
+    }
+    const totalQuery = `SELECT COUNT(*) FROM compliance_task ${whereClause}`;
+    const pendingQuery = `SELECT COUNT(*) FROM compliance_task ${whereClause} AND is_approved = FALSE`;
+    const approvedQuery = `SELECT COUNT(*) FROM compliance_task ${whereClause} AND is_approved = TRUE`;
 
     const [totalRes, pendingRes, approvedRes] = await Promise.all([
-      this.db.query(totalQuery),
-      this.db.query(pendingQuery),
-      this.db.query(approvedQuery),
+      this.db.query(totalQuery, values),
+      this.db.query(pendingQuery, values),
+      this.db.query(approvedQuery, values),
     ]);
 
     return {
@@ -137,5 +143,14 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
     return res.rows[0];
+  }
+
+  async createBulk(circularId: number, tasks: { description: string }[]) {
+    const results: any[] = [];
+    for (const t of tasks) {
+      const res = await this.createManual(t.description, circularId);
+      results.push(res);
+    }
+    return results;
   }
 }

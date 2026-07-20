@@ -71,9 +71,27 @@ export class AssignmentsController {
     return this.assignmentsService.proposeTimeline(parseInt(id, 10), date);
   }
 
+  @Patch(':id/propose-custom-timeline')
+  async proposeCustomTimeline(
+    @Param('id') id: string,
+    @Body('date') date: string,
+    @Body('task_timelines') taskTimelines: { assignment_task_id: number; proposed_due_date: string }[]
+  ) {
+    return this.assignmentsService.proposeCustomTimeline(parseInt(id, 10), date, taskTimelines);
+  }
+
   @Patch(':id/accept-timeline')
   async acceptTimeline(@Param('id') id: string) {
     return this.assignmentsService.acceptTimeline(parseInt(id, 10));
+  }
+
+  @Patch(':id/accept-timeline-with-changes')
+  async acceptTimelineWithChanges(
+    @Param('id') id: string,
+    @Body('date') date?: string,
+    @Body('task_timelines') taskTimelines?: { assignment_task_id: number; proposed_due_date: string }[]
+  ) {
+    return this.assignmentsService.acceptTimelineWithChanges(parseInt(id, 10), date, taskTimelines);
   }
 
   @Get(':id/evidence')

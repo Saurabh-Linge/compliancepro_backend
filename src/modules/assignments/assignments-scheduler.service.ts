@@ -79,10 +79,10 @@ export class AssignmentsSchedulerService {
           continue;
         }
 
-        // Create assignment record directly in 'In_Progress' state
+        // Create assignment record in 'Pending_Timeline' state
         const insertRes = await this.db.query(
           `INSERT INTO assignment (task_set_id, branch_id, proposed_timeline, status)
-           VALUES ($1, $2, $3, 'In_Progress')
+           VALUES ($1, $2, $3, 'Pending_Timeline')
            RETURNING id`,
           [ts.id, branchId, dueDate]
         );
@@ -90,11 +90,11 @@ export class AssignmentsSchedulerService {
 
         // Populate assignment_task mapping table
         await this.db.query(
-          `INSERT INTO assignment_task (assignment_id, task_id, status)
-           SELECT $1, task_id, 'PENDING'
+          `INSERT INTO assignment_task (assignment_id, task_id, status, due_date, proposed_due_date)
+           SELECT $1, task_id, 'PENDING', $3::DATE, $3::DATE
            FROM task_set_mapping
            WHERE task_set_id = $2`,
-          [newAssignmentId, ts.id]
+          [newAssignmentId, ts.id, dueDate]
         );
 
         generatedCount++;

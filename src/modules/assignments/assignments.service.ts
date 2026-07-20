@@ -29,12 +29,12 @@ export class AssignmentsService {
 
       // 2. Populate assignment_task for each task in the task set
       const tasksQuery = `
-        INSERT INTO assignment_task (assignment_id, task_id, status)
-        SELECT $1, task_id, 'PENDING'
+        INSERT INTO assignment_task (assignment_id, task_id, status, due_date, proposed_due_date)
+        SELECT $1, task_id, 'PENDING', $3::DATE, $3::DATE
         FROM task_set_mapping
         WHERE task_set_id = $2
       `;
-      await this.db.query(tasksQuery, [assignment.id, taskSetId]);
+      await this.db.query(tasksQuery, [assignment.id, taskSetId, proposedTimeline]);
     }
     return assignments;
   }
@@ -67,6 +67,8 @@ export class AssignmentsService {
         at.remarks,
         at.review_status,
         at.review_remark,
+        at.due_date::TEXT as due_date,
+        at.proposed_due_date::TEXT as proposed_due_date,
         ct.id as task_id, 
         ct.description,
         th.name as header_name,
@@ -116,7 +118,71 @@ export class AssignmentsService {
     return result.rows[0];
   }
 
+  async proposeCustomTimeline(id: number, date: string, taskTimelines: { assignment_task_id: number; proposed_due_date: string }[]) {
+    const query = `
+      UPDATE assignment
+      SET proposed_timeline = $1, status = 'Timeline_Review'
+      WHERE id = $2
+      RETURNING *
+    `;
+    const result = await this.db.query(query, [date, id]);
+
+    for (const t of taskTimelines) {
+      const taskQuery = `
+        UPDATE assignment_task
+        SET proposed_due_date = $1
+        WHERE id = $2 AND assignment_id = $3
+      `;
+      await this.db.query(taskQuery, [t.proposed_due_date, t.assignment_task_id, id]);
+    }
+
+    return result.rows[0];
+  }
+
   async acceptTimeline(id: number) {
+    const updateTasksQuery = `
+      UPDATE assignment_task
+      SET due_date = COALESCE(proposed_due_date, due_date)
+      WHERE assignment_id = $1
+    `;
+    await this.db.query(updateTasksQuery, [id]);
+
+    const query = `
+      UPDATE assignment
+      SET status = 'In_Progress'
+      WHERE id = $1
+      RETURNING *
+    `;
+    const result = await this.db.query(query, [id]);
+    return result.rows[0];
+  }
+
+  async acceptTimelineWithChanges(id: number, date?: string, taskTimelines?: { assignment_task_id: number; proposed_due_date: string }[]) {
+    if (date) {
+      await this.db.query(`
+        UPDATE assignment
+        SET proposed_timeline = $1
+        WHERE id = $2
+      `, [date, id]);
+    }
+
+    if (taskTimelines && taskTimelines.length > 0) {
+      for (const t of taskTimelines) {
+        await this.db.query(`
+          UPDATE assignment_task
+          SET proposed_due_date = $1
+          WHERE id = $2 AND assignment_id = $3
+        `, [t.proposed_due_date, t.assignment_task_id, id]);
+      }
+    }
+
+    const updateTasksQuery = `
+      UPDATE assignment_task
+      SET due_date = COALESCE(proposed_due_date, due_date)
+      WHERE assignment_id = $1
+    `;
+    await this.db.query(updateTasksQuery, [id]);
+
     const query = `
       UPDATE assignment
       SET status = 'In_Progress'

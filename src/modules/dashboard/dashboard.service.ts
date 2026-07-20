@@ -130,10 +130,14 @@ export class DashboardService {
       this.db.query('SELECT count(*) as count FROM task_set'),
       this.db.query('SELECT count(*) as count FROM branch_dept'),
       this.db.query(`
-        SELECT c.id, c.title, c.published_date, a.name as authority_name
-        FROM circular c
-        JOIN authority a ON a.id = c.authority_id
-        ORDER BY c.id DESC LIMIT 5
+        SELECT * FROM (
+          SELECT DISTINCT ON (c.title) c.id, c.title, c.published_date, c.pdf_url, a.name as authority_name
+          FROM circular c
+          JOIN authority a ON a.id = c.authority_id
+          ORDER BY c.title, c.id DESC
+        ) sub
+        ORDER BY sub.id DESC
+        LIMIT 5
       `),
       this.db.query(assignmentStatsQuery, assignmentParams),
       this.db.query(recentAssignmentsQuery, recentAssignmentsParams),

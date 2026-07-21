@@ -5,7 +5,7 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 
 @Injectable()
 export class BranchesService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService) { }
 
   async create(createBranchDto: CreateBranchDto) {
     const query = `
@@ -23,7 +23,7 @@ export class BranchesService {
   async findAll(userRole?: string, userId?: string) {
     // Currently, COs should be able to see and assign task sets to all branches. 
     // If strict branch-to-CO mapping is needed later, this can be restored once the Admin UI supports mapping.
-    const result = await this.db.query(`SELECT * FROM branch_dept ORDER BY id ASC`);
+    const result = await this.db.query(`SELECT * FROM branch_dept ORDER BY id DESC`);
     return result.rows;
   }
 

@@ -1,0 +1,1242 @@
+--- TABLES IN PUBLIC SCHEMA ---
+["assignment","assignment_task","audit_area","authority","branch_dept","circular","circular_amendment","circular_file","circular_log","compliance_task","evidence","notification","scraper_state","task_header","task_set","task_set_branch","task_set_mapping","users"]
+
+===========================================
+TABLE: assignment
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('assignment_id_seq'::regclass)"
+  },
+  {
+    "column_name": "task_set_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "branch_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "proposed_timeline",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "status",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "review_remark",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "reviewed_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "assignment_task_set_id_fkey",
+    "column_name": "task_set_id",
+    "foreign_table_name": "task_set",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "assignment_branch_id_fkey",
+    "column_name": "branch_id",
+    "foreign_table_name": "branch_dept",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "assignment_pkey",
+    "indexdef": "CREATE UNIQUE INDEX assignment_pkey ON public.assignment USING btree (id)"
+  }
+]
+Row Count: 3
+
+===========================================
+TABLE: assignment_task
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('assignment_task_id_seq'::regclass)"
+  },
+  {
+    "column_name": "assignment_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "task_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "status",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": "'PENDING'::character varying"
+  },
+  {
+    "column_name": "completed_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "remarks",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "compliance_status",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": "'PENDING'::character varying"
+  },
+  {
+    "column_name": "review_status",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": "NULL::character varying"
+  },
+  {
+    "column_name": "review_remark",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "due_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "proposed_due_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "assignment_task_assignment_id_fkey",
+    "column_name": "assignment_id",
+    "foreign_table_name": "assignment",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "assignment_task_task_id_fkey",
+    "column_name": "task_id",
+    "foreign_table_name": "compliance_task",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "assignment_task_pkey",
+    "indexdef": "CREATE UNIQUE INDEX assignment_task_pkey ON public.assignment_task USING btree (id)"
+  },
+  {
+    "indexname": "assignment_task_assignment_id_task_id_key",
+    "indexdef": "CREATE UNIQUE INDEX assignment_task_assignment_id_task_id_key ON public.assignment_task USING btree (assignment_id, task_id)"
+  }
+]
+Row Count: 15
+
+===========================================
+TABLE: audit_area
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('audit_area_id_seq'::regclass)"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "audit_area_pkey",
+    "indexdef": "CREATE UNIQUE INDEX audit_area_pkey ON public.audit_area USING btree (id)"
+  }
+]
+Row Count: 2676
+
+===========================================
+TABLE: authority
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('authority_id_seq'::regclass)"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "source_url",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "authority_pkey",
+    "indexdef": "CREATE UNIQUE INDEX authority_pkey ON public.authority USING btree (id)"
+  }
+]
+Row Count: 10
+
+===========================================
+TABLE: branch_dept
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('branch_dept_id_seq'::regclass)"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "type",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "co_user_id",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "branch_dept_co_user_id_fkey",
+    "column_name": "co_user_id",
+    "foreign_table_name": "users",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "branch_dept_pkey",
+    "indexdef": "CREATE UNIQUE INDEX branch_dept_pkey ON public.branch_dept USING btree (id)"
+  }
+]
+Row Count: 6
+
+===========================================
+TABLE: circular
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('circular_id_seq'::regclass)"
+  },
+  {
+    "column_name": "authority_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "reference_no",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "title",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "published_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "priority",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": "'General'::character varying"
+  },
+  {
+    "column_name": "circular_type",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": "6"
+  },
+  {
+    "column_name": "description",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "portal_website",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "is_penalty_applicable",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "column_name": "penalty_amount",
+    "data_type": "numeric",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "penalty_description",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "pdf_url",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "ai_processing_status",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": "'QUEUED'::character varying"
+  },
+  {
+    "column_name": "circular_nature",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": "'ORIGINAL'::character varying"
+  },
+  {
+    "column_name": "amendment_notes",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "is_withdrawn",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "column_name": "is_applicable",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "true"
+  },
+  {
+    "column_name": "is_active",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "true"
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "circular_authority_id_fkey",
+    "column_name": "authority_id",
+    "foreign_table_name": "authority",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "circular_pkey",
+    "indexdef": "CREATE UNIQUE INDEX circular_pkey ON public.circular USING btree (id)"
+  }
+]
+Row Count: 2093
+
+===========================================
+TABLE: circular_amendment
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('circular_amendment_id_seq'::regclass)"
+  },
+  {
+    "column_name": "original_circular_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "amendment_circular_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "column_default": "now()"
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "circular_amendment_original_circular_id_amendment_circular__key",
+    "indexdef": "CREATE UNIQUE INDEX circular_amendment_original_circular_id_amendment_circular__key ON public.circular_amendment USING btree (original_circular_id, amendment_circular_id)"
+  },
+  {
+    "indexname": "circular_amendment_pkey",
+    "indexdef": "CREATE UNIQUE INDEX circular_amendment_pkey ON public.circular_amendment USING btree (id)"
+  },
+  {
+    "indexname": "idx_ca_amendment",
+    "indexdef": "CREATE INDEX idx_ca_amendment ON public.circular_amendment USING btree (amendment_circular_id)"
+  },
+  {
+    "indexname": "idx_ca_original",
+    "indexdef": "CREATE INDEX idx_ca_original ON public.circular_amendment USING btree (original_circular_id)"
+  }
+]
+Row Count: 85
+
+===========================================
+TABLE: circular_file
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('circular_file_id_seq'::regclass)"
+  },
+  {
+    "column_name": "circular_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "file_name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "file_url",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "mime_type",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "processing_time_ms",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "circular_file_circular_id_fkey",
+    "column_name": "circular_id",
+    "foreign_table_name": "circular",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "circular_file_pkey",
+    "indexdef": "CREATE UNIQUE INDEX circular_file_pkey ON public.circular_file USING btree (id)"
+  },
+  {
+    "indexname": "idx_circular_file_circular_id",
+    "indexdef": "CREATE INDEX idx_circular_file_circular_id ON public.circular_file USING btree (circular_id)"
+  }
+]
+Row Count: 2077
+
+===========================================
+TABLE: circular_log
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('circular_log_id_seq'::regclass)"
+  },
+  {
+    "column_name": "circular_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "status",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "message",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "circular_log_pkey",
+    "indexdef": "CREATE UNIQUE INDEX circular_log_pkey ON public.circular_log USING btree (id)"
+  }
+]
+Row Count: 18044
+
+===========================================
+TABLE: compliance_task
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('compliance_task_id_seq1'::regclass)"
+  },
+  {
+    "column_name": "circular_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "description",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "status",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": "'PENDING'::character varying"
+  },
+  {
+    "column_name": "is_approved",
+    "data_type": "boolean",
+    "is_nullable": "NO",
+    "column_default": "false"
+  },
+  {
+    "column_name": "is_discarded",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "column_name": "parent_task_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "embedding",
+    "data_type": "USER-DEFINED",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "header_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "priority",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "risk_category",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "business_risk",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "control_risk",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "audit_area_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "compliance_task_circular_id_fkey",
+    "column_name": "circular_id",
+    "foreign_table_name": "circular",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "compliance_task_parent_task_id_fkey",
+    "column_name": "parent_task_id",
+    "foreign_table_name": "compliance_task",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "compliance_task_header_id_fkey",
+    "column_name": "header_id",
+    "foreign_table_name": "task_header",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "compliance_task_audit_area_id_fkey",
+    "column_name": "audit_area_id",
+    "foreign_table_name": "audit_area",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "compliance_task_pkey",
+    "indexdef": "CREATE UNIQUE INDEX compliance_task_pkey ON public.compliance_task USING btree (id)"
+  }
+]
+Row Count: 710
+
+===========================================
+TABLE: evidence
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('evidence_id_seq'::regclass)"
+  },
+  {
+    "column_name": "assignment_task_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "assignment_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "file_url",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "remark",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "submitted_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "evidence_assignment_task_id_fkey",
+    "column_name": "assignment_task_id",
+    "foreign_table_name": "assignment_task",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "evidence_assignment_id_fkey",
+    "column_name": "assignment_id",
+    "foreign_table_name": "assignment",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "evidence_pkey",
+    "indexdef": "CREATE UNIQUE INDEX evidence_pkey ON public.evidence USING btree (id)"
+  }
+]
+Row Count: 1
+
+===========================================
+TABLE: notification
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('notification_id_seq'::regclass)"
+  },
+  {
+    "column_name": "branch_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "user_id",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "title",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "message",
+    "data_type": "text",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "is_read",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "false"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "assignment_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "notification_assignment_id_fkey",
+    "column_name": "assignment_id",
+    "foreign_table_name": "assignment",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "notification_user_id_fkey",
+    "column_name": "user_id",
+    "foreign_table_name": "users",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "notification_branch_id_fkey",
+    "column_name": "branch_id",
+    "foreign_table_name": "branch_dept",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "notification_pkey",
+    "indexdef": "CREATE UNIQUE INDEX notification_pkey ON public.notification USING btree (id)"
+  }
+]
+Row Count: 7
+
+===========================================
+TABLE: scraper_state
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('scraper_state_id_seq'::regclass)"
+  },
+  {
+    "column_name": "authority_name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "last_processed_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "last_reference_no",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "scraper_state_pkey",
+    "indexdef": "CREATE UNIQUE INDEX scraper_state_pkey ON public.scraper_state USING btree (id)"
+  },
+  {
+    "indexname": "scraper_state_authority_name_key",
+    "indexdef": "CREATE UNIQUE INDEX scraper_state_authority_name_key ON public.scraper_state USING btree (authority_name)"
+  }
+]
+Row Count: 1
+
+===========================================
+TABLE: task_header
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('task_header_id_seq'::regclass)"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[]
+Indexes:
+[
+  {
+    "indexname": "task_header_pkey",
+    "indexdef": "CREATE UNIQUE INDEX task_header_pkey ON public.task_header USING btree (id)"
+  }
+]
+Row Count: 2
+
+===========================================
+TABLE: task_set
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": "nextval('task_set_id_seq'::regclass)"
+  },
+  {
+    "column_name": "name",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "default_due_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "start_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "end_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "frequency",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "reporting_date",
+    "data_type": "date",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "now()"
+  },
+  {
+    "column_name": "circular_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "task_set_circular_id_fkey",
+    "column_name": "circular_id",
+    "foreign_table_name": "circular",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "task_set_pkey",
+    "indexdef": "CREATE UNIQUE INDEX task_set_pkey ON public.task_set USING btree (id)"
+  }
+]
+Row Count: 3
+
+===========================================
+TABLE: task_set_branch
+===========================================
+Columns:
+[
+  {
+    "column_name": "task_set_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "branch_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "task_set_branch_task_set_id_fkey",
+    "column_name": "task_set_id",
+    "foreign_table_name": "task_set",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "task_set_branch_branch_id_fkey",
+    "column_name": "branch_id",
+    "foreign_table_name": "branch_dept",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "task_set_branch_pkey",
+    "indexdef": "CREATE UNIQUE INDEX task_set_branch_pkey ON public.task_set_branch USING btree (task_set_id, branch_id)"
+  }
+]
+Row Count: 3
+
+===========================================
+TABLE: task_set_mapping
+===========================================
+Columns:
+[
+  {
+    "column_name": "task_set_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "task_id",
+    "data_type": "integer",
+    "is_nullable": "NO",
+    "column_default": null
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "task_set_mapping_task_set_id_fkey",
+    "column_name": "task_set_id",
+    "foreign_table_name": "task_set",
+    "foreign_column_name": "id"
+  },
+  {
+    "constraint_name": "task_set_mapping_task_id_fkey",
+    "column_name": "task_id",
+    "foreign_table_name": "compliance_task",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "task_set_mapping_pkey",
+    "indexdef": "CREATE UNIQUE INDEX task_set_mapping_pkey ON public.task_set_mapping USING btree (task_set_id, task_id)"
+  }
+]
+Row Count: 15
+
+===========================================
+TABLE: users
+===========================================
+Columns:
+[
+  {
+    "column_name": "id",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "username",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "password_hash",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "full_name",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "email",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "mobile_number",
+    "data_type": "character varying",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "role",
+    "data_type": "character varying",
+    "is_nullable": "NO",
+    "column_default": null
+  },
+  {
+    "column_name": "branch_id",
+    "data_type": "integer",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "column_name": "is_active",
+    "data_type": "boolean",
+    "is_nullable": "YES",
+    "column_default": "true"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "column_default": "CURRENT_TIMESTAMP"
+  }
+]
+Foreign Keys:
+[
+  {
+    "constraint_name": "users_branch_id_fkey",
+    "column_name": "branch_id",
+    "foreign_table_name": "branch_dept",
+    "foreign_column_name": "id"
+  }
+]
+Indexes:
+[
+  {
+    "indexname": "users_pkey",
+    "indexdef": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)"
+  },
+  {
+    "indexname": "users_username_key",
+    "indexdef": "CREATE UNIQUE INDEX users_username_key ON public.users USING btree (username)"
+  }
+]
+Row Count: 4

@@ -174,6 +174,7 @@ export class CircularsService {
       SELECT 
         c.*,
         a.name as authority_name,
+        (SELECT COUNT(*)::int FROM compliance_task ct WHERE ct.circular_id = c.id) as task_count,
         CASE c.circular_type
           WHEN 1 THEN 'Regulatory & Statutory Compliance'
           WHEN 2 THEN 'Supervisory Compliance'
@@ -264,6 +265,7 @@ export class CircularsService {
       SELECT 
         c.*,
         a.name as authority_name,
+        (SELECT COUNT(*)::int FROM compliance_task ct WHERE ct.circular_id = c.id) as task_count,
         CASE c.circular_type
           WHEN 1 THEN 'Regulatory & Statutory Compliance'
           WHEN 2 THEN 'Supervisory Compliance'
@@ -296,6 +298,7 @@ export class CircularsService {
       SELECT 
         c.*,
         a.name as authority_name,
+        (SELECT COUNT(*)::int FROM compliance_task ct WHERE ct.circular_id = c.id) as task_count,
         CASE c.circular_type
           WHEN 1 THEN 'Regulatory & Statutory Compliance'
           WHEN 2 THEN 'Supervisory Compliance'

@@ -28,6 +28,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ScraperModule } from './modules/scraper/scraper.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { MasterBulkUploadModule } from './modules/master-bulk-upload/master-bulk-upload.module';
+import { TranslationModule } from './modules/translation/translation.module';
 
 @Module({
   imports: [
@@ -69,7 +70,8 @@ import { MasterBulkUploadModule } from './modules/master-bulk-upload/master-bulk
     ScheduleModule.forRoot(),
     ScraperModule,
     ReportsModule,
-    MasterBulkUploadModule
+    MasterBulkUploadModule,
+    TranslationModule
   ],
   controllers: [AppController],
   providers: [

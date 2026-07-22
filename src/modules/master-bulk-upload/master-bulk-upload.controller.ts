@@ -1,7 +1,10 @@
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { MasterBulkUploadService } from './master-bulk-upload.service';
 
+import { IsArray } from 'class-validator';
+
 export class MasterBulkUploadDto {
+  @IsArray()
   rows: any[];
 }
 

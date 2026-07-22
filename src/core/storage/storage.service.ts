@@ -45,6 +45,20 @@ export class StorageService implements OnModuleInit {
     return `/uploads/circulars/${year}/${month}/${uniqueFileName}`;
   }
 
+  async uploadTaskFile(fileBuffer: Buffer, fileName: string): Promise<string> {
+    const ext = fileName.split('.').pop() || 'bin';
+    const hash = crypto.randomBytes(8).toString('hex');
+    const targetDir = path.join(this.uploadDir, 'tasks-upload');
+    await fs.mkdir(targetDir, { recursive: true });
+
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const uniqueFileName = `${path.parse(safeFileName).name}_${hash}.${ext}`;
+    const filePath = path.join(targetDir, uniqueFileName);
+
+    await fs.writeFile(filePath, fileBuffer);
+    return `/uploads/tasks-upload/${uniqueFileName}`;
+  }
+
   async getFileStream(fileUrl: string) {
     // Convert relative URL like /uploads/circulars/2026/07/file.pdf to absolute path
     let relativePath = fileUrl;

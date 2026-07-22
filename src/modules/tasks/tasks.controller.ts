@@ -1,13 +1,43 @@
-import { Controller, Get, Post, Patch, Put, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Param, Body, ParseIntPipe, Query, Req, BadRequestException } from '@nestjs/common';
+import { FastifyRequest } from 'fastify';
 import { TasksService } from './tasks.service';
 import { AiService } from '../../core/ai/ai.service';
+import { StorageService } from '../../core/storage/storage.service';
 
 @Controller('tasks')
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
     private readonly aiService: AiService,
+    private readonly storageService: StorageService,
   ) {}
+
+  @Post('upload')
+  async uploadTaskFile(@Req() req: any) {
+    const fastifyReq = req as any;
+    if (typeof fastifyReq.isMultipart === 'function' && !fastifyReq.isMultipart()) {
+      throw new BadRequestException('Request is not multipart');
+    }
+
+    const parts = fastifyReq.parts();
+    let fileBuffer: Buffer | null = null;
+    let filename = '';
+
+    for await (const part of parts) {
+      if (part.file) {
+        fileBuffer = await part.toBuffer();
+        filename = part.filename;
+        break;
+      }
+    }
+
+    if (!fileBuffer || !filename) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    const fileUrl = await this.storageService.uploadTaskFile(fileBuffer, filename);
+    return { file_url: fileUrl, filename };
+  }
 
   @Get('stats')
   async getStats(@Query('circular_id') circularId?: string) {
@@ -45,9 +75,10 @@ export class TasksController {
     @Body('risk_category') riskCategory?: string,
     @Body('business_risk') businessRisk?: string,
     @Body('control_risk') controlRisk?: string,
-    @Body('audit_area_id') auditAreaId?: number
+    @Body('audit_area_id') auditAreaId?: number,
+    @Body('file_url') fileUrl?: string,
   ) {
-    return this.tasksService.createManual(description, circularId, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId);
+    return this.tasksService.createManual(description, circularId, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId, fileUrl);
   }
 
   @Put(':id')
@@ -59,9 +90,10 @@ export class TasksController {
     @Body('risk_category') riskCategory?: string,
     @Body('business_risk') businessRisk?: string,
     @Body('control_risk') controlRisk?: string,
-    @Body('audit_area_id') auditAreaId?: number
+    @Body('audit_area_id') auditAreaId?: number,
+    @Body('file_url') fileUrl?: string,
   ) {
-    return this.tasksService.update(id, description, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId);
+    return this.tasksService.update(id, description, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId, fileUrl);
   }
 
   @Post('extract-from-text')

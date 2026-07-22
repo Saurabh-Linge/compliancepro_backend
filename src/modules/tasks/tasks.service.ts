@@ -112,13 +112,14 @@ export class TasksService {
     riskCategory?: string,
     businessRisk?: string,
     controlRisk?: string,
-    auditAreaId?: number
+    auditAreaId?: number,
+    fileUrl?: string
   ) {
     const res = await this.db.query(
-      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, status, priority, risk_category, business_risk, control_risk, audit_area_id) 
-       VALUES ($1, $2, $3, false, 'PENDING', $4, $5, $6, $7, $8) 
+      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, status, priority, risk_category, business_risk, control_risk, audit_area_id, file_url) 
+       VALUES ($1, $2, $3, false, 'PENDING', $4, $5, $6, $7, $8, $9) 
        RETURNING *`,
-      [description, circularId, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null],
+      [description, circularId, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null, fileUrl || null],
     );
     return res.rows[0];
   }
@@ -131,13 +132,26 @@ export class TasksService {
     riskCategory?: string,
     businessRisk?: string,
     controlRisk?: string,
-    auditAreaId?: number
+    auditAreaId?: number,
+    fileUrl?: string
   ) {
     const res = await this.db.query(
       `UPDATE compliance_task 
-       SET description = $1, header_id = $2, priority = $3, risk_category = $4, business_risk = $5, control_risk = $6, audit_area_id = $7, updated_at = CURRENT_TIMESTAMP 
-       WHERE id = $8 RETURNING *`,
-      [description, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null, id],
+       SET description = $1, 
+           header_id = $2, 
+           priority = $3, 
+           risk_category = $4, 
+           business_risk = $5, 
+           control_risk = $6, 
+           audit_area_id = $7, 
+           file_url = CASE 
+                        WHEN $8::text = '__REMOVE__' THEN NULL 
+                        WHEN $8::text IS NOT NULL AND $8::text != '' THEN $8::text 
+                        ELSE file_url 
+                      END, 
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $9 RETURNING *`,
+      [description, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null, fileUrl !== undefined ? fileUrl : null, id],
     );
     if (res.rowCount === 0) {
       throw new NotFoundException(`Task with ID ${id} not found`);

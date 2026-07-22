@@ -87,13 +87,17 @@ export class AssignmentsService implements OnModuleInit {
         at.review_remark,
         at.due_date::TEXT as due_date,
         at.proposed_due_date::TEXT as proposed_due_date,
+        at.proposed_remark,
+        at.timeline_review_remark,
         ct.id as task_id, 
         ct.description,
+        ct.file_url,
         th.name as header_name,
         a.id as assignment_id,
         a.status as assignment_status,
         a.proposed_timeline,
         a.review_remark as assignment_review_remark,
+        a.timeline_remark as assignment_timeline_remark,
         ts.name as task_set_name,
         ts.frequency,
         ts.start_date,
@@ -157,13 +161,13 @@ export class AssignmentsService implements OnModuleInit {
     return result.rows[0];
   }
 
-  async proposeTaskTimeline(assignmentId: number, assignmentTaskId: number, proposedDueDate: string) {
+  async proposeTaskTimeline(assignmentId: number, assignmentTaskId: number, proposedDueDate: string, proposedRemark?: string) {
     const taskQuery = `
       UPDATE assignment_task
-      SET proposed_due_date = $1
-      WHERE id = $2 AND assignment_id = $3
+      SET proposed_due_date = $1, proposed_remark = $2
+      WHERE id = $3 AND assignment_id = $4
     `;
-    await this.db.query(taskQuery, [proposedDueDate, assignmentTaskId, assignmentId]);
+    await this.db.query(taskQuery, [proposedDueDate, proposedRemark || null, assignmentTaskId, assignmentId]);
 
     // Automatically transition the main assignment status to 'Timeline_Review' when a task due date is proposed/modified.
     const query = `
@@ -172,6 +176,84 @@ export class AssignmentsService implements OnModuleInit {
       WHERE id = $1 AND (status = 'Pending_Timeline' OR status = 'Timeline_Review')
     `;
     await this.db.query(query, [assignmentId]);
+
+    return { success: true };
+  }
+
+  async reviewTaskTimeline(assignmentId: number, assignmentTaskId: number, status: 'APPROVED' | 'REJECTED', remark?: string) {
+    const reviewStatus = status === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+    
+    // If approved, update due_date to proposed_due_date
+    if (status === 'APPROVED') {
+      const taskQuery = `
+        UPDATE assignment_task
+        SET due_date = COALESCE(proposed_due_date, due_date),
+            timeline_review_remark = $1,
+            review_status = $2
+        WHERE id = $3 AND assignment_id = $4
+      `;
+      await this.db.query(taskQuery, [remark || null, reviewStatus, assignmentTaskId, assignmentId]);
+    } else {
+      // If rejected, set timeline_review_remark and set review_status to REJECTED
+      const taskQuery = `
+        UPDATE assignment_task
+        SET timeline_review_remark = $1,
+            review_status = $2
+        WHERE id = $3 AND assignment_id = $4
+      `;
+      await this.db.query(taskQuery, [remark || null, reviewStatus, assignmentTaskId, assignmentId]);
+    }
+
+    // Check if we need to auto-transition the assignment status.
+    // If rejected, change assignment status back to 'Pending_Timeline' so branch can correct it.
+    if (status === 'REJECTED') {
+      const query = `
+        UPDATE assignment
+        SET status = 'Pending_Timeline'
+        WHERE id = $1
+      `;
+      await this.db.query(query, [assignmentId]);
+    } else {
+      // If all tasks are approved, transition assignment status to 'In_Progress'
+      const checkTasksQuery = `
+        SELECT COUNT(*) as total,
+               COUNT(CASE WHEN review_status = 'APPROVED' THEN 1 END) as approved
+        FROM assignment_task
+        WHERE assignment_id = $1
+      `;
+      const checkRes = await this.db.query(checkTasksQuery, [assignmentId]);
+      const { total, approved } = checkRes.rows[0];
+      if (parseInt(total, 10) === parseInt(approved, 10)) {
+        await this.db.query(`UPDATE assignment SET status = 'In_Progress' WHERE id = $1`, [assignmentId]);
+      }
+    }
+
+    // Fetch metadata and emit notification event
+    try {
+      const infoQuery = `
+        SELECT a.branch_id, ts.name as task_set_name, ct.description as task_description
+        FROM assignment a
+        JOIN task_set ts ON ts.id = a.task_set_id
+        JOIN assignment_task at ON at.assignment_id = a.id
+        JOIN compliance_task ct ON ct.id = at.task_id
+        WHERE at.id = $1 AND a.id = $2
+      `;
+      const infoRes = await this.db.query(infoQuery, [assignmentTaskId, assignmentId]);
+      const info = infoRes.rows[0];
+      if (info) {
+        this.eventEmitter.emit('timeline.task_reviewed', {
+          assignmentId,
+          assignmentTaskId,
+          status,
+          remark: remark || '',
+          branchId: info.branch_id,
+          taskSetName: info.task_set_name,
+          taskDescription: info.task_description
+        });
+      }
+    } catch (e) {
+      this.logger.error('Failed to emit task timeline review event: ' + e.message);
+    }
 
     return { success: true };
   }
@@ -321,7 +403,7 @@ export class AssignmentsService implements OnModuleInit {
         ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date,
         bd.name as branch_name,
         (
-          SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description))
+          SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description, 'file_url', ct.file_url))
           FROM task_set_mapping tsm
           JOIN compliance_task ct ON ct.id = tsm.task_id
           WHERE tsm.task_set_id = ts.id

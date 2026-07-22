@@ -9,13 +9,12 @@ const client = new Client({
 
 async function main() {
   await client.connect();
-  console.log('Connected to DB. Running migration...');
-  await client.query(`
-    ALTER TABLE assignment_task 
-    ADD COLUMN IF NOT EXISTS proposed_remark TEXT,
-    ADD COLUMN IF NOT EXISTS timeline_review_remark TEXT;
+  const res = await client.query(`
+    SELECT column_name, data_type 
+    FROM information_schema.columns 
+    WHERE table_name = 'assignment_task';
   `);
-  console.log('Migration completed successfully.');
+  console.log('assignment_task columns:', res.rows);
   await client.end();
 }
 

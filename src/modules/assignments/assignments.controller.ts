@@ -84,9 +84,20 @@ export class AssignmentsController {
   async proposeTaskTimeline(
     @Param('id') id: string,
     @Param('taskId') taskId: string,
-    @Body('proposed_due_date') proposedDueDate: string
+    @Body('proposed_due_date') proposedDueDate: string,
+    @Body('proposed_remark') proposedRemark?: string
   ) {
-    return this.assignmentsService.proposeTaskTimeline(parseInt(id, 10), parseInt(taskId, 10), proposedDueDate);
+    return this.assignmentsService.proposeTaskTimeline(parseInt(id, 10), parseInt(taskId, 10), proposedDueDate, proposedRemark);
+  }
+
+  @Patch(':id/tasks/:taskId/review-timeline')
+  async reviewTaskTimeline(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body('status') status: 'APPROVED' | 'REJECTED',
+    @Body('remark') remark?: string
+  ) {
+    return this.assignmentsService.reviewTaskTimeline(parseInt(id, 10), parseInt(taskId, 10), status, remark);
   }
 
   @Patch(':id/accept-timeline')

@@ -269,4 +269,47 @@ export class NotificationsService {
       this.logger.error('Error handling assignment rejected notification', error);
     }
   }
+
+  @OnEvent('timeline.task_reviewed')
+  async handleTimelineTaskReviewedEvent(payload: {
+    assignmentId: number;
+    assignmentTaskId: number;
+    status: 'APPROVED' | 'REJECTED';
+    remark: string;
+    branchId: number;
+    taskSetName: string;
+    taskDescription: string;
+  }) {
+    this.logger.log(`Task timeline for task ${payload.assignmentTaskId} reviewed: ${payload.status}`);
+
+    const statusText = payload.status === 'APPROVED' ? 'Accepted' : 'Rejected';
+    const title = `Task Proposed Date ${statusText}`;
+    const message = `The proposed due date for task "${payload.taskDescription}" in "${payload.taskSetName}" has been ${statusText.toLowerCase()}.${payload.remark ? ' Remarks: "' + payload.remark + '"' : ''}`;
+    const emailSubject = `[Timeline ${statusText}] ${payload.taskSetName} - ${payload.taskDescription}`;
+    
+    try {
+      const branchId = payload.branchId;
+      // Store notification in database for the branch
+      await this.db.query(
+        `INSERT INTO notification (branch_id, title, message) VALUES ($1, $2, $3)`,
+        [branchId, title, message],
+      );
+
+      // Email all active users of that branch
+      const usersResult = await this.db.query(
+        `SELECT email FROM users WHERE branch_id = $1 AND email IS NOT NULL AND is_active = true`,
+        [branchId],
+      );
+      for (const row of usersResult.rows) {
+        this.emailService.sendMail(
+          row.email,
+          emailSubject,
+          message,
+          `<p><strong>${title}</strong></p><p>${message}</p><p>Please login to Compliance Pro to view details.</p>`,
+        ).catch(err => this.logger.error(`Failed to send email to ${row.email}`, err));
+      }
+    } catch (error) {
+      this.logger.error('Failed to send task timeline review notification', error);
+    }
+  }
 }

@@ -5,7 +5,7 @@ import { UpdateTaskSetDto } from './dto/update-task-set.dto';
 
 @Injectable()
 export class TaskSetsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService) { }
 
   async create(createTaskSetDto: CreateTaskSetDto) {
     const query = `
@@ -22,7 +22,7 @@ export class TaskSetsService {
       createTaskSetDto.frequency || null,
       createTaskSetDto.reporting_date || null,
     ]);
-    
+
     const taskSet = result.rows[0];
 
     if (createTaskSetDto.taskIds && createTaskSetDto.taskIds.length > 0) {
@@ -40,7 +40,7 @@ export class TaskSetsService {
         c.reference_no AS circular_reference_no
       FROM task_set ts
       LEFT JOIN circular c ON c.id = ts.circular_id
-      ORDER BY ts.id ASC
+      ORDER BY ts.id DESC
     `);
     return result.rows;
   }
@@ -100,7 +100,7 @@ export class TaskSetsService {
   async mapTasks(id: number, taskIds: number[], taskTimelines?: { task_id: number; due_date: string | null }[]) {
     // First clear existing mappings
     await this.db.query(`DELETE FROM task_set_mapping WHERE task_set_id = $1`, [id]);
-    
+
     // Add new mappings
     if (taskIds && taskIds.length > 0) {
       const dateMap = new Map<number, string | null>();
@@ -116,20 +116,20 @@ export class TaskSetsService {
         );
       }
     }
-    
+
     return { mapped: true };
   }
 
   async mapBranches(id: number, branchIds: number[]) {
     // First clear existing mappings
     await this.db.query(`DELETE FROM task_set_branch WHERE task_set_id = $1`, [id]);
-    
+
     // Add new mappings
     if (branchIds && branchIds.length > 0) {
       const mappingValues = branchIds.map(branchId => `(${id}, ${branchId})`).join(',');
       await this.db.query(`INSERT INTO task_set_branch (task_set_id, branch_id) VALUES ${mappingValues}`);
     }
-    
+
     return { mapped: true };
   }
 
@@ -149,7 +149,7 @@ export class TaskSetsService {
         SELECT id FROM assignment WHERE task_set_id = $1
       )
     `, [id]);
-    
+
     return { reopened: true };
   }
 

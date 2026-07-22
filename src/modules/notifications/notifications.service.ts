@@ -120,6 +120,10 @@ export class NotificationsService {
       title = 'Assignment Approved';
       message = `Your assignment for "${payload.taskSetName}" was approved and marked as Completed.`;
       emailSubject = `[Approved] ${payload.taskSetName}`;
+    } else if (payload.status === 'In_Progress') {
+      title = 'Timeline Approved';
+      message = `The proposed due dates/timeline for assignment "${payload.taskSetName}" has been approved. You can now start submitting compliance checklist items.`;
+      emailSubject = `[Timeline Approved] ${payload.taskSetName}`;
     } else {
       return; // Not a status we notify for
     }
@@ -146,16 +150,17 @@ export class NotificationsService {
           ).catch(err => this.logger.error(`Failed to send email to ${row.email}`, err));
         }
       } else {
+        const branchId = payload.branchId || (payload as any).branch_id || null;
         // COMPLETED: notify the branch
         await this.db.query(
           `INSERT INTO notification (branch_id, title, message) VALUES ($1, $2, $3)`,
-          [payload.branchId, title, message],
+          [branchId, title, message],
         );
 
         // Email all active users of that branch
         const usersResult = await this.db.query(
           `SELECT email FROM users WHERE branch_id = $1 AND email IS NOT NULL AND is_active = true`,
-          [payload.branchId],
+          [branchId],
         );
         for (const row of usersResult.rows) {
           this.emailService.sendMail(
@@ -215,15 +220,17 @@ export class NotificationsService {
     const message = `Your submission for "${payload.taskSetName}" has been returned for re-compliance.${remarkPart} Please login and resubmit the flagged tasks.`;
     const emailSubject = `[Action Required] Re-compliance Needed — ${payload.taskSetName}`;
 
+    const branchId = payload.branchId || (payload as any).branch_id || null;
+
     try {
       await this.db.query(
         `INSERT INTO notification (branch_id, title, message) VALUES ($1, $2, $3)`,
-        [payload.branchId, title, message]
+        [branchId, title, message]
       );
 
       const usersResult = await this.db.query(
         `SELECT email FROM users WHERE branch_id = $1 AND email IS NOT NULL AND is_active = true`,
-        [payload.branchId]
+        [branchId]
       );
       for (const row of usersResult.rows) {
         this.emailService.sendMail(

@@ -80,6 +80,15 @@ export class AssignmentsController {
     return this.assignmentsService.proposeCustomTimeline(parseInt(id, 10), date, taskTimelines);
   }
 
+  @Patch(':id/tasks/:taskId/propose-timeline')
+  async proposeTaskTimeline(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body('proposed_due_date') proposedDueDate: string
+  ) {
+    return this.assignmentsService.proposeTaskTimeline(parseInt(id, 10), parseInt(taskId, 10), proposedDueDate);
+  }
+
   @Patch(':id/accept-timeline')
   async acceptTimeline(@Param('id') id: string) {
     return this.assignmentsService.acceptTimeline(parseInt(id, 10));

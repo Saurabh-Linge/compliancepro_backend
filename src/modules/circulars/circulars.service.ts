@@ -211,9 +211,14 @@ export class CircularsService {
     let paramIndex = 1;
 
     if (search) {
-      conditions.push(`(c.title ILIKE $${paramIndex} OR c.description ILIKE $${paramIndex} OR a.name ILIKE $${paramIndex} OR c.reference_no ILIKE $${paramIndex})`);
-      values.push(`%${search}%`);
-      paramIndex++;
+      const words = search.trim().split(/\s+/).filter(Boolean);
+      if (words.length > 0) {
+        words.forEach(word => {
+          conditions.push(`(LOWER(c.title) LIKE $${paramIndex} OR LOWER(c.description) LIKE $${paramIndex} OR LOWER(a.name) LIKE $${paramIndex} OR LOWER(c.reference_no) LIKE $${paramIndex})`);
+          values.push(`%${word.toLowerCase()}%`);
+          paramIndex++;
+        });
+      }
     }
 
     if (hasTasks) {

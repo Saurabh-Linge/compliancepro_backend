@@ -33,8 +33,12 @@ export class TaskSetsController {
   }
 
   @Post(':id/tasks')
-  mapTasks(@Param('id') id: string, @Body('taskIds') taskIds: number[]) {
-    return this.taskSetsService.mapTasks(+id, taskIds);
+  mapTasks(
+    @Param('id') id: string, 
+    @Body('taskIds') taskIds: number[],
+    @Body('taskTimelines') taskTimelines?: { task_id: number; due_date: string | null }[]
+  ) {
+    return this.taskSetsService.mapTasks(+id, taskIds, taskTimelines);
   }
 
   @Post(':id/branches')

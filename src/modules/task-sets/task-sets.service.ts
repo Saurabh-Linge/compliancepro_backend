@@ -50,7 +50,7 @@ export class TaskSetsService {
     const taskSet = result.rows[0];
     if (taskSet) {
       const tasksResult = await this.db.query(`
-        SELECT t.* FROM compliance_task t
+        SELECT t.*, tsm.due_date::TEXT as due_date FROM compliance_task t
         JOIN task_set_mapping tsm ON t.id = tsm.task_id
         WHERE tsm.task_set_id = $1
       `, [id]);
@@ -97,14 +97,24 @@ export class TaskSetsService {
     return { deleted: true };
   }
 
-  async mapTasks(id: number, taskIds: number[]) {
+  async mapTasks(id: number, taskIds: number[], taskTimelines?: { task_id: number; due_date: string | null }[]) {
     // First clear existing mappings
     await this.db.query(`DELETE FROM task_set_mapping WHERE task_set_id = $1`, [id]);
     
     // Add new mappings
     if (taskIds && taskIds.length > 0) {
-      const mappingValues = taskIds.map(taskId => `(${id}, ${taskId})`).join(',');
-      await this.db.query(`INSERT INTO task_set_mapping (task_set_id, task_id) VALUES ${mappingValues}`);
+      const dateMap = new Map<number, string | null>();
+      if (taskTimelines) {
+        taskTimelines.forEach(t => dateMap.set(Number(t.task_id), t.due_date));
+      }
+
+      for (const taskId of taskIds) {
+        const dueDate = dateMap.get(taskId) || null;
+        await this.db.query(
+          `INSERT INTO task_set_mapping (task_set_id, task_id, due_date) VALUES ($1, $2, $3)`,
+          [id, taskId, dueDate]
+        );
+      }
     }
     
     return { mapped: true };

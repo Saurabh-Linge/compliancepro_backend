@@ -1,11 +1,11 @@
 // AssignmentsService — handles assignment CRUD and review logic
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../../core/database/database.service';
 import { StorageService } from '../../core/storage/storage.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
-export class AssignmentsService {
+export class AssignmentsService implements OnModuleInit {
   private readonly logger = new Logger(AssignmentsService.name);
 
   constructor(
@@ -13,6 +13,24 @@ export class AssignmentsService {
     private readonly storage: StorageService,
     private eventEmitter: EventEmitter2
   ) { }
+
+  async onModuleInit() {
+    this.logger.log('Normalizing proposed_due_date for Pending_Timeline and Timeline_Review assignments...');
+    try {
+      await this.db.query(`
+        UPDATE assignment_task
+        SET proposed_due_date = NULL
+        WHERE proposed_due_date = due_date
+          AND assignment_id IN (
+            SELECT id FROM assignment 
+            WHERE status = 'Pending_Timeline' OR status = 'Timeline_Review'
+          )
+      `);
+      this.logger.log('proposed_due_date normalization complete.');
+    } catch (err) {
+      this.logger.error('Failed to normalize proposed_due_date on startup:', err);
+    }
+  }
 
   async create(taskSetId: number, branchIds: number[], proposedTimeline: string) {
     const assignments = [];
@@ -30,9 +48,9 @@ export class AssignmentsService {
       // 2. Populate assignment_task for each task in the task set
       const tasksQuery = `
         INSERT INTO assignment_task (assignment_id, task_id, status, due_date, proposed_due_date)
-        SELECT $1, task_id, 'PENDING', $3::DATE, $3::DATE
-        FROM task_set_mapping
-        WHERE task_set_id = $2
+        SELECT $1, tsm.task_id, 'PENDING', COALESCE(tsm.due_date, $3::DATE), NULL
+        FROM task_set_mapping tsm
+        WHERE tsm.task_set_id = $2
       `;
       await this.db.query(tasksQuery, [assignment.id, taskSetId, proposedTimeline]);
     }
@@ -139,6 +157,25 @@ export class AssignmentsService {
     return result.rows[0];
   }
 
+  async proposeTaskTimeline(assignmentId: number, assignmentTaskId: number, proposedDueDate: string) {
+    const taskQuery = `
+      UPDATE assignment_task
+      SET proposed_due_date = $1
+      WHERE id = $2 AND assignment_id = $3
+    `;
+    await this.db.query(taskQuery, [proposedDueDate, assignmentTaskId, assignmentId]);
+
+    // Automatically transition the main assignment status to 'Timeline_Review' when a task due date is proposed/modified.
+    const query = `
+      UPDATE assignment
+      SET status = 'Timeline_Review'
+      WHERE id = $1 AND (status = 'Pending_Timeline' OR status = 'Timeline_Review')
+    `;
+    await this.db.query(query, [assignmentId]);
+
+    return { success: true };
+  }
+
   async acceptTimeline(id: number) {
     const updateTasksQuery = `
       UPDATE assignment_task
@@ -154,7 +191,20 @@ export class AssignmentsService {
       RETURNING *
     `;
     const result = await this.db.query(query, [id]);
-    return result.rows[0];
+    const updated = result.rows[0];
+
+    if (updated) {
+      const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
+      const tsRes = await this.db.query(taskSetQuery, [id]);
+      this.eventEmitter.emit('assignment.updated', {
+        assignmentId: id,
+        status: 'In_Progress',
+        branchId: updated.branch_id || updated.branchId,
+        taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
+      });
+    }
+
+    return updated;
   }
 
   async acceptTimelineWithChanges(id: number, date?: string, taskTimelines?: { assignment_task_id: number; proposed_due_date: string }[]) {
@@ -190,7 +240,20 @@ export class AssignmentsService {
       RETURNING *
     `;
     const result = await this.db.query(query, [id]);
-    return result.rows[0];
+    const updated = result.rows[0];
+
+    if (updated) {
+      const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
+      const tsRes = await this.db.query(taskSetQuery, [id]);
+      this.eventEmitter.emit('assignment.updated', {
+        assignmentId: id,
+        status: 'In_Progress',
+        branchId: updated.branch_id || updated.branchId,
+        taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
+      });
+    }
+
+    return updated;
   }
   async getAllAssignments(userRole?: string, userId?: string) {
     let query = `
@@ -299,7 +362,7 @@ export class AssignmentsService {
       this.eventEmitter.emit('assignment.updated', {
         assignmentId: id,
         status: 'REVIEW_PENDING',
-        branchId: updated.branch_id,
+        branchId: updated.branch_id || updated.branchId,
         taskSetName: tsRes.rows[0]?.name || 'Unknown Task Set'
       });
     }
@@ -427,7 +490,7 @@ export class AssignmentsService {
     this.eventEmitter.emit('assignment.updated', {
       assignmentId,
       status: updated.status,
-      branchId: updated.branch_id,
+      branchId: updated.branch_id || updated.branchId,
       taskSetName,
       previousStatus
     });
@@ -436,7 +499,7 @@ export class AssignmentsService {
     if (updated.status === 'REJECTED') {
       this.eventEmitter.emit('assignment.rejected', {
         assignmentId,
-        branchId: updated.branch_id,
+        branchId: updated.branch_id || updated.branchId,
         taskSetName,
         reviewRemark: remark,
         previousStatus

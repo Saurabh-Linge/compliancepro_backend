@@ -91,9 +91,9 @@ export class AssignmentsSchedulerService {
         // Populate assignment_task mapping table
         await this.db.query(
           `INSERT INTO assignment_task (assignment_id, task_id, status, due_date, proposed_due_date)
-           SELECT $1, task_id, 'PENDING', $3::DATE, $3::DATE
-           FROM task_set_mapping
-           WHERE task_set_id = $2`,
+           SELECT $1, tsm.task_id, 'PENDING', COALESCE(tsm.due_date, $3::DATE), NULL
+           FROM task_set_mapping tsm
+           WHERE tsm.task_set_id = $2`,
           [newAssignmentId, ts.id, dueDate]
         );
 

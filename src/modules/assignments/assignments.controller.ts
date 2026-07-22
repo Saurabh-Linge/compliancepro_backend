@@ -33,7 +33,8 @@ export class AssignmentsController {
     @Query('limit') limit: string = '10',
     @Req() req: FastifyRequest,
     @Query('search') search?: string,
-    @Query('status') status?: string
+    @Query('status') status?: string,
+    @Query('only_expired') onlyExpired?: string
   ) {
     const user = (req as any).user;
     let finalBranchId = branchId ? parseInt(branchId, 10) : undefined;
@@ -51,8 +52,20 @@ export class AssignmentsController {
       limit: parseInt(limit, 10),
       branchId: finalBranchId,
       search,
-      status
+      status,
+      onlyExpired: onlyExpired === 'true'
     });
+  }
+
+  @Put(':id/extend-timeline')
+  async extendTimeline(
+    @Param('id') id: string,
+    @Body('date') date: string
+  ) {
+    if (!date) {
+      throw new BadRequestException('Extension date is required');
+    }
+    return this.assignmentsService.extendTimeline(parseInt(id, 10), date);
   }
 
   @Put(':id/status')

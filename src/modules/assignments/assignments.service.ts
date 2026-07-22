@@ -361,8 +361,8 @@ export class AssignmentsService implements OnModuleInit {
     return result.rows;
   }
 
-  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string }) {
-    const { page, limit, branchId, search, status } = params;
+  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string; onlyExpired?: boolean }) {
+    const { page, limit, branchId, search, status, onlyExpired } = params;
     const offset = (page - 1) * limit;
 
     let conditions = ['1=1'];
@@ -377,6 +377,11 @@ export class AssignmentsService implements OnModuleInit {
     if (status) {
       conditions.push(`a.status = $${paramIndex++}`);
       values.push(status);
+    }
+
+    if (onlyExpired) {
+      conditions.push(`a.proposed_timeline < CURRENT_DATE`);
+      conditions.push(`UPPER(a.status) != 'COMPLETED'`);
     }
 
     if (search) {
@@ -425,6 +430,25 @@ export class AssignmentsService implements OnModuleInit {
       page,
       limit
     };
+  }
+
+  async extendTimeline(id: number, date: string) {
+    const query = `
+      UPDATE assignment
+      SET proposed_timeline = $1
+      WHERE id = $2
+      RETURNING *
+    `;
+    const result = await this.db.query(query, [date, id]);
+
+    const taskQuery = `
+      UPDATE assignment_task
+      SET due_date = $1, proposed_due_date = NULL
+      WHERE assignment_id = $2 AND (due_date < $1::DATE OR due_date IS NULL)
+    `;
+    await this.db.query(taskQuery, [date, id]);
+
+    return result.rows[0];
   }
 
   async updateStatus(id: number, status: string) {

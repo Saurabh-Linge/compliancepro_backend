@@ -147,11 +147,15 @@ export class AssignmentsController {
       throw new BadRequestException('No files uploaded');
     }
 
+    const user = (req as any).user;
+    const username = user?.username || 'Branch User';
+
     return this.assignmentsService.addTaskEvidences(
       parseInt(taskId, 10),
       parseInt(id, 10),
       filesData,
-      remark
+      remark,
+      username
     );
   }
 
@@ -160,13 +164,18 @@ export class AssignmentsController {
     @Param('id') id: string,
     @Param('taskId') taskId: string,
     @Body('compliance_status') complianceStatus: 'COMPLIED' | 'NOT_COMPLIED',
-    @Body('remarks') remarks: string
+    @Body('remarks') remarks: string,
+    @Req() req: FastifyRequest
   ) {
+    const user = (req as any).user;
+    const username = user?.username || 'Branch User';
+
     return this.assignmentsService.completeTaskDirectly(
       parseInt(taskId, 10),
       parseInt(id, 10),
       complianceStatus,
-      remarks
+      remarks,
+      username
     );
   }
 
@@ -184,8 +193,20 @@ export class AssignmentsController {
     @Param('id') id: string,
     @Param('taskId') taskId: string,
     @Body('review_status') reviewStatus: 'APPROVED' | 'NEEDS_REDO',
-    @Body('review_remark') reviewRemark?: string
+    @Body('review_remark') reviewRemark: string | undefined,
+    @Req() req: FastifyRequest
   ) {
-    return this.assignmentsService.reviewTaskStatus(parseInt(taskId, 10), reviewStatus, reviewRemark);
+    const user = (req as any).user;
+    const username = user?.username || 'Reviewer';
+
+    return this.assignmentsService.reviewTaskStatus(parseInt(taskId, 10), reviewStatus, reviewRemark, username);
+  }
+
+  @Get(':id/tasks/:taskId/remarks-history')
+  async getTaskRemarksHistory(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string
+  ) {
+    return this.assignmentsService.getTaskRemarksHistory(parseInt(taskId, 10));
   }
 }

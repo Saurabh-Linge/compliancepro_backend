@@ -452,7 +452,7 @@ export class AssignmentsService implements OnModuleInit {
     return updated;
   }
 
-  async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: { buffer: Buffer, filename: string }[], remark: string) {
+  async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: { buffer: Buffer, filename: string }[], remark: string, username: string = 'Branch User') {
     let lastResult = null;
     for (const file of filesData) {
       // 1. Upload file to MinIO
@@ -471,10 +471,23 @@ export class AssignmentsService implements OnModuleInit {
     // 3. Mark task as COMPLETED
     await this.db.query(`UPDATE assignment_task SET status = 'COMPLETED', compliance_status = 'COMPLIED', completed_at = NOW() WHERE id = $1`, [assignmentTaskId]);
 
+    // 4. Save history (avoid duplicates if same remark exists as the last entry)
+    const lastHistoryRes = await this.db.query(
+      `SELECT remark FROM assignment_task_remarks_history WHERE assignment_task_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [assignmentTaskId]
+    );
+    const lastHistory = lastHistoryRes.rows[0];
+    if (!lastHistory || lastHistory.remark !== remark) {
+      await this.db.query(
+        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'COMPLIER', $2, $3)`,
+        [assignmentTaskId, username, remark]
+      );
+    }
+
     return lastResult;
   }
 
-  async completeTaskDirectly(assignmentTaskId: number, assignmentId: number, complianceStatus: 'COMPLIED' | 'NOT_COMPLIED', remarks: string) {
+  async completeTaskDirectly(assignmentTaskId: number, assignmentId: number, complianceStatus: 'COMPLIED' | 'NOT_COMPLIED', remarks: string, username: string = 'Branch User') {
     const query = `
       UPDATE assignment_task
       SET compliance_status = $1,
@@ -486,6 +499,20 @@ export class AssignmentsService implements OnModuleInit {
     `;
     const result = await this.db.query(query, [complianceStatus, remarks, assignmentTaskId, assignmentId]);
     const updatedTask = result.rows[0];
+
+    // Save history (avoid duplicates if same remark exists as the last entry)
+    const lastHistoryRes = await this.db.query(
+      `SELECT remark FROM assignment_task_remarks_history WHERE assignment_task_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [assignmentTaskId]
+    );
+    const lastHistory = lastHistoryRes.rows[0];
+    if (!lastHistory || lastHistory.remark !== remarks) {
+      await this.db.query(
+        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'COMPLIER', $2, $3)`,
+        [assignmentTaskId, username, remarks]
+      );
+    }
+
     return updatedTask;
   }
 
@@ -591,7 +618,7 @@ export class AssignmentsService implements OnModuleInit {
     return updated;
   }
 
-  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO', reviewRemark?: string) {
+  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO', reviewRemark?: string, username: string = 'Reviewer') {
     const query = `
       UPDATE assignment_task
       SET review_status = $1, review_remark = $2
@@ -599,6 +626,32 @@ export class AssignmentsService implements OnModuleInit {
       RETURNING *
     `;
     const result = await this.db.query(query, [reviewStatus, reviewRemark || null, assignmentTaskId]);
+
+    if (reviewRemark) {
+      const lastHistoryRes = await this.db.query(
+        `SELECT remark FROM assignment_task_remarks_history WHERE assignment_task_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [assignmentTaskId]
+      );
+      const lastHistory = lastHistoryRes.rows[0];
+      if (!lastHistory || lastHistory.remark !== reviewRemark) {
+        await this.db.query(
+          `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'REVIEWER', $2, $3)`,
+          [assignmentTaskId, username, reviewRemark]
+        );
+      }
+    }
+
     return result.rows[0];
+  }
+
+  async getTaskRemarksHistory(assignmentTaskId: number) {
+    const query = `
+      SELECT id, role, username, remark, created_at
+      FROM assignment_task_remarks_history
+      WHERE assignment_task_id = $1
+      ORDER BY created_at ASC
+    `;
+    const result = await this.db.query(query, [assignmentTaskId]);
+    return result.rows;
   }
 }

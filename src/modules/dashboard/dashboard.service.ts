@@ -8,7 +8,7 @@ export class DashboardService {
   async getStats(user: any) {
     const role = user?.role;
     const userId = user?.sub;
-    const branchId = user?.branch_id;
+    const branchId = user?.branchId ?? user?.branch_id;
 
     // Base queries
     let assignmentStatsQuery = `
@@ -39,7 +39,7 @@ export class DashboardService {
       assignmentParams.push(userId);
       recentAssignmentsQuery += ` WHERE bd.co_user_id = $1 ORDER BY a.id DESC LIMIT 8`;
       recentAssignmentsParams.push(userId);
-    } else if ((role === 'BRANCH' || role === 'BRANCH_USER') && branchId) {
+    } else if ((role === 'BRANCH' || role === 'BRANCH_USER' || role === 'DEPARTMENT') && branchId) {
       assignmentStatsQuery += ` WHERE a.branch_id = $1`;
       assignmentParams.push(branchId);
       recentAssignmentsQuery += ` WHERE a.branch_id = $1 ORDER BY a.id DESC LIMIT 8`;
@@ -53,7 +53,7 @@ export class DashboardService {
     let approvedTaskCountQuery = "SELECT count(*) as count FROM compliance_task WHERE status = 'APPROVED'";
     let taskParams: any[] = [];
 
-    if ((role === 'BRANCH' || role === 'BRANCH_USER') && branchId) {
+    if ((role === 'BRANCH' || role === 'BRANCH_USER' || role === 'DEPARTMENT') && branchId) {
       taskCountQuery = `
         SELECT count(at.id) as count 
         FROM assignment_task at 

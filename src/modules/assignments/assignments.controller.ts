@@ -39,13 +39,12 @@ export class AssignmentsController {
     const user = (req as any).user;
     let finalBranchId = branchId ? parseInt(branchId, 10) : undefined;
     
-    // Temporarily removed authorization completely
-    // if (user?.role === 'BRANCH' || user?.role === 'BRANCH_USER') {
-    //   const bId = user.branchId || user.branch_id;
-    //   if (bId) {
-    //     finalBranchId = parseInt(bId, 10);
-    //   }
-    // }
+    if (user?.role === 'BRANCH' || user?.role === 'BRANCH_USER' || user?.role === 'DEPARTMENT') {
+      const bId = user.branchId || user.branch_id;
+      if (bId) {
+        finalBranchId = parseInt(bId, 10);
+      }
+    }
 
     return this.assignmentsService.findAllPaginated({
       page: parseInt(page, 10),

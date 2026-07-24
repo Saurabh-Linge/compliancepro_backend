@@ -204,7 +204,7 @@ export class AssignmentsController {
   async reviewTaskStatus(
     @Param('id') id: string,
     @Param('taskId') taskId: string,
-    @Body('review_status') reviewStatus: 'APPROVED' | 'NEEDS_REDO',
+    @Body('review_status') reviewStatus: 'APPROVED' | 'NEEDS_REDO' | 'ESCALATED',
     @Body('review_remark') reviewRemark: string | undefined,
     @Req() req: FastifyRequest
   ) {

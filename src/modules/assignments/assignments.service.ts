@@ -225,6 +225,7 @@ export class AssignmentsService implements OnModuleInit {
       const { total, approved } = checkRes.rows[0];
       if (parseInt(total, 10) === parseInt(approved, 10)) {
         await this.db.query(`UPDATE assignment SET status = 'In_Progress' WHERE id = $1`, [assignmentId]);
+        await this.db.query(`UPDATE assignment_task SET review_status = NULL WHERE assignment_id = $1`, [assignmentId]);
       }
     }
 
@@ -261,7 +262,7 @@ export class AssignmentsService implements OnModuleInit {
   async acceptTimeline(id: number) {
     const updateTasksQuery = `
       UPDATE assignment_task
-      SET due_date = COALESCE(proposed_due_date, due_date)
+      SET due_date = COALESCE(proposed_due_date, due_date), review_status = NULL
       WHERE assignment_id = $1
     `;
     await this.db.query(updateTasksQuery, [id]);
@@ -310,7 +311,7 @@ export class AssignmentsService implements OnModuleInit {
 
     const updateTasksQuery = `
       UPDATE assignment_task
-      SET due_date = COALESCE(proposed_due_date, due_date)
+      SET due_date = COALESCE(proposed_due_date, due_date), review_status = NULL
       WHERE assignment_id = $1
     `;
     await this.db.query(updateTasksQuery, [id]);
@@ -462,6 +463,11 @@ export class AssignmentsService implements OnModuleInit {
     const updated = result.rows[0];
 
     if (updated && status === 'REVIEW_PENDING') {
+      await this.db.query(
+        `UPDATE assignment_task SET review_status = NULL WHERE assignment_id = $1 AND review_status = 'NEEDS_REDO'`,
+        [id]
+      );
+
       const taskSetQuery = `SELECT name FROM task_set ts JOIN assignment a ON a.task_set_id = ts.id WHERE a.id = $1`;
       const tsRes = await this.db.query(taskSetQuery, [id]);
 
@@ -595,16 +601,11 @@ export class AssignmentsService implements OnModuleInit {
              WHERE assignment_id = $1 AND review_status = 'NEEDS_REDO'`,
             [assignmentId]
           );
-          // Clear review_status on all tasks
-          await client.query(
-            `UPDATE assignment_task SET review_status = NULL WHERE assignment_id = $1`,
-            [assignmentId]
-          );
         } else {
-          // No per-task flags set — reset all tasks
+          // No per-task flags set — reset all tasks to NEEDS_REDO for re-compliance
           await client.query(
             `UPDATE assignment_task
-             SET status = 'PENDING', completed_at = NULL, compliance_status = 'PENDING', remarks = NULL, review_status = NULL
+             SET status = 'PENDING', completed_at = NULL, compliance_status = 'PENDING', remarks = NULL, review_status = 'NEEDS_REDO'
              WHERE assignment_id = $1`,
             [assignmentId]
           );
@@ -642,14 +643,42 @@ export class AssignmentsService implements OnModuleInit {
     return updated;
   }
 
-  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO', reviewRemark?: string, username: string = 'Reviewer') {
-    const query = `
-      UPDATE assignment_task
-      SET review_status = $1, review_remark = $2
-      WHERE id = $3
-      RETURNING *
-    `;
-    const result = await this.db.query(query, [reviewStatus, reviewRemark || null, assignmentTaskId]);
+  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO' | 'ESCALATED', reviewRemark?: string, username: string = 'Reviewer') {
+    let query: string;
+    let params: any[];
+
+    if (reviewStatus === 'NEEDS_REDO') {
+      query = `
+        UPDATE assignment_task
+        SET review_status = $1, 
+            review_remark = $2,
+            status = 'PENDING',
+            compliance_status = 'PENDING',
+            remarks = NULL
+        WHERE id = $3
+        RETURNING *
+      `;
+      params = [reviewStatus, reviewRemark || null, assignmentTaskId];
+    } else {
+      query = `
+        UPDATE assignment_task
+        SET review_status = $1, 
+            review_remark = $2
+        WHERE id = $3
+        RETURNING *
+      `;
+      params = [reviewStatus, reviewRemark || null, assignmentTaskId];
+    }
+
+    const result = await this.db.query(query, params);
+    const updatedTask = result.rows[0];
+
+    if (reviewStatus === 'NEEDS_REDO' && updatedTask?.assignment_id) {
+      await this.db.query(
+        `UPDATE assignment SET status = 'REJECTED', review_remark = $1 WHERE id = $2`,
+        [reviewRemark || 'Task needs re-compliance', updatedTask.assignment_id]
+      );
+    }
 
     if (reviewRemark) {
       const lastHistoryRes = await this.db.query(
@@ -665,7 +694,7 @@ export class AssignmentsService implements OnModuleInit {
       }
     }
 
-    return result.rows[0];
+    return updatedTask;
   }
 
   async getTaskRemarksHistory(assignmentTaskId: number) {

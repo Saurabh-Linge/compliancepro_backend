@@ -52,7 +52,9 @@ async function truncateDatabase() {
         circular_file,
         circular_log,
         circular_amendment,
-        circular
+        circular,
+        task_set_branch,
+        task_set_mapping
       CASCADE;
     `);
     console.log('[DB] All circular and dependency tables successfully truncated!');

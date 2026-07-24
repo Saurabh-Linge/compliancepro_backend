@@ -61,6 +61,12 @@ export class TasksController {
     });
   }
 
+  @Patch('approve-all')
+  approveAllTasks(@Query('circularId') circularId?: string) {
+    const parsedId = circularId ? parseInt(circularId, 10) : undefined;
+    return this.tasksService.approveAll(parsedId);
+  }
+
   @Patch(':id/approve')
   approveTask(@Param('id', ParseIntPipe) id: number) {
     return this.tasksService.approve(id);

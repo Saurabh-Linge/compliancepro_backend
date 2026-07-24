@@ -6,24 +6,29 @@ export class DashboardService {
   constructor(private readonly db: DatabaseService) {}
 
   async getStats(user: any) {
-    const role = user?.role;
-    const userId = user?.sub;
+    const rawRole = String(user?.role || '').toUpperCase();
+    const userId = user?.sub || user?.id;
     const branchId = user?.branchId ?? user?.branch_id;
 
-    // Base queries
+    const isCO = rawRole === 'CO' || rawRole === 'CO_USER' || rawRole === 'CO_REVIEWER';
+    const isCCO = rawRole === 'CCO';
+    const isDeptOrBranch = rawRole === 'BRANCH' || rawRole === 'BRANCH_USER' || rawRole === 'DEPARTMENT';
+
+    // Base queries for assignments
     let assignmentStatsQuery = `
       SELECT 
         count(*) as total,
-        sum(case when status = 'COMPLETED' then 1 else 0 end) as completed,
-        sum(case when status = 'In_Progress' then 1 else 0 end) as in_progress,
-        sum(case when status = 'REVIEW_PENDING' then 1 else 0 end) as review_pending,
-        sum(case when status = 'Pending_Timeline' then 1 else 0 end) as pending_timeline,
-        sum(case when status = 'Timeline_Review' then 1 else 0 end) as timeline_review,
-        sum(case when status = 'ESCALATED_TO_CCO' then 1 else 0 end) as escalated
+        sum(case when UPPER(status) = 'COMPLETED' then 1 else 0 end) as completed,
+        sum(case when UPPER(status) = 'IN_PROGRESS' then 1 else 0 end) as in_progress,
+        sum(case when UPPER(status) = 'REVIEW_PENDING' then 1 else 0 end) as review_pending,
+        sum(case when UPPER(status) = 'PENDING_TIMELINE' then 1 else 0 end) as pending_timeline,
+        sum(case when UPPER(status) = 'TIMELINE_REVIEW' then 1 else 0 end) as timeline_review,
+        sum(case when UPPER(status) = 'ESCALATED_TO_CCO' then 1 else 0 end) as escalated,
+        sum(case when UPPER(status) IN ('REJECTED', 'PENDING_RECOMPLIANCE') then 1 else 0 end) as rejected
       FROM assignment a
     `;
     let assignmentParams: any[] = [];
-    
+
     let recentAssignmentsQuery = `
       SELECT a.id, a.status, a.proposed_timeline, 
              ts.name as task_set_name, bd.name as branch_name
@@ -34,12 +39,19 @@ export class DashboardService {
     let recentAssignmentsParams: any[] = [];
 
     // Role-based filtering
-    if (role === 'CO' && userId) {
-      assignmentStatsQuery += ` JOIN branch_dept bd ON bd.id = a.branch_id WHERE bd.co_user_id = $1`;
-      assignmentParams.push(userId);
-      recentAssignmentsQuery += ` WHERE bd.co_user_id = $1 ORDER BY a.id DESC LIMIT 8`;
-      recentAssignmentsParams.push(userId);
-    } else if ((role === 'BRANCH' || role === 'BRANCH_USER' || role === 'DEPARTMENT') && branchId) {
+    if (isCO && userId) {
+      // Check if CO has specific mapped branches
+      const mappedCheck = await this.db.query(`SELECT count(*) FROM branch_dept WHERE co_user_id = $1`, [userId]);
+      const hasMapped = parseInt(mappedCheck.rows[0]?.count || '0', 10) > 0;
+      if (hasMapped) {
+        assignmentStatsQuery += ` JOIN branch_dept bd ON bd.id = a.branch_id WHERE bd.co_user_id = $1`;
+        assignmentParams.push(userId);
+        recentAssignmentsQuery += ` WHERE bd.co_user_id = $1 ORDER BY a.id DESC LIMIT 8`;
+        recentAssignmentsParams.push(userId);
+      } else {
+        recentAssignmentsQuery += ` ORDER BY a.id DESC LIMIT 8`;
+      }
+    } else if (isDeptOrBranch && branchId) {
       assignmentStatsQuery += ` WHERE a.branch_id = $1`;
       assignmentParams.push(branchId);
       recentAssignmentsQuery += ` WHERE a.branch_id = $1 ORDER BY a.id DESC LIMIT 8`;
@@ -49,11 +61,11 @@ export class DashboardService {
     }
 
     let taskCountQuery = 'SELECT count(*) as count FROM compliance_task';
-    let pendingTaskCountQuery = "SELECT count(*) as count FROM compliance_task WHERE status = 'PENDING'";
-    let approvedTaskCountQuery = "SELECT count(*) as count FROM compliance_task WHERE status = 'APPROVED'";
+    let pendingTaskCountQuery = "SELECT count(*) as count FROM assignment_task WHERE UPPER(status) = 'PENDING'";
+    let approvedTaskCountQuery = "SELECT count(*) as count FROM assignment_task WHERE UPPER(review_status) = 'APPROVED' OR UPPER(status) = 'COMPLETED'";
     let taskParams: any[] = [];
 
-    if ((role === 'BRANCH' || role === 'BRANCH_USER' || role === 'DEPARTMENT') && branchId) {
+    if (isDeptOrBranch && branchId) {
       taskCountQuery = `
         SELECT count(at.id) as count 
         FROM assignment_task at 
@@ -64,13 +76,13 @@ export class DashboardService {
         SELECT count(at.id) as count 
         FROM assignment_task at 
         JOIN assignment a ON at.assignment_id = a.id 
-        WHERE a.branch_id = $1 AND at.status = 'PENDING'
+        WHERE a.branch_id = $1 AND UPPER(at.status) = 'PENDING'
       `;
       approvedTaskCountQuery = `
         SELECT count(at.id) as count 
         FROM assignment_task at 
         JOIN assignment a ON at.assignment_id = a.id 
-        WHERE a.branch_id = $1 AND at.status = 'COMPLETED'
+        WHERE a.branch_id = $1 AND (UPPER(at.review_status) = 'APPROVED' OR UPPER(at.status) = 'COMPLETED')
       `;
       taskParams = [branchId];
     }
@@ -89,18 +101,18 @@ export class DashboardService {
          FROM assignment_task at 
          JOIN compliance_task ct ON at.task_id = ct.id 
          JOIN circular c ON ct.circular_id = c.id 
-         WHERE c.authority_id = a.id AND at.status = 'COMPLETED') as completed_tasks,
+         WHERE c.authority_id = a.id AND (UPPER(at.review_status) = 'APPROVED' OR UPPER(at.status) = 'COMPLETED')) as completed_tasks,
         (SELECT count(at.id) 
          FROM assignment_task at 
          JOIN compliance_task ct ON at.task_id = ct.id 
          JOIN circular c ON ct.circular_id = c.id 
-         WHERE c.authority_id = a.id AND at.status = 'PENDING') as pending_tasks,
+         WHERE c.authority_id = a.id AND (at.status IS NULL OR UPPER(at.status) = 'PENDING')) as pending_tasks,
         (SELECT count(at.id) 
          FROM assignment_task at 
          JOIN compliance_task ct ON at.task_id = ct.id 
          JOIN circular c ON ct.circular_id = c.id 
          JOIN assignment assign ON at.assignment_id = assign.id
-         WHERE c.authority_id = a.id AND at.status = 'PENDING' AND assign.proposed_timeline < CURRENT_DATE AND assign.status != 'COMPLETED') as overdue_tasks,
+         WHERE c.authority_id = a.id AND (at.status IS NULL OR UPPER(at.status) = 'PENDING') AND assign.proposed_timeline < CURRENT_DATE AND UPPER(assign.status) != 'COMPLETED') as overdue_tasks,
         (SELECT COALESCE(sum(c.penalty_amount), 0) FROM circular c WHERE c.authority_id = a.id AND c.is_penalty_applicable = TRUE) as total_penalty
       FROM authority a
       ORDER BY a.id ASC
@@ -144,17 +156,86 @@ export class DashboardService {
       this.db.query(`SELECT a.name, count(c.id) as count FROM authority a LEFT JOIN circular c ON c.authority_id = a.id GROUP BY a.name`),
       this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'BRANCH'"),
       this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'DEPARTMENT'"),
-      this.db.query("SELECT count(*) as count FROM assignment WHERE status = 'ESCALATED_TO_CCO'"),
+      this.db.query("SELECT count(*) as count FROM assignment WHERE UPPER(status) IN ('ESCALATED_TO_CCO', 'REVIEW_PENDING')"),
       this.db.query(`
         SELECT count(at.id) as count 
         FROM assignment_task at 
         JOIN assignment a ON at.assignment_id = a.id 
-        WHERE at.status = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED'
+        WHERE UPPER(at.status) = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
       `),
       this.db.query(authorityReportsQuery)
     ]);
 
     const stats = assignmentStats.rows[0] || {};
+
+    let coMetricsData = null;
+    if ((isCO || isCCO || rawRole === 'ADMIN') && userId) {
+      const coBranchesCount = await this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'BRANCH'");
+      const coHeadOfficeCount = await this.db.query("SELECT count(*) as count FROM branch_dept WHERE type = 'DEPARTMENT'");
+      const coPendingCompliance = await this.db.query(`
+        SELECT count(*) as count FROM assignment WHERE UPPER(status) IN ('REVIEW_PENDING', 'TIMELINE_REVIEW', 'ESCALATED_TO_CCO')
+      `);
+      const coOverdue = await this.db.query(`
+        SELECT count(at.id) as count
+        FROM assignment_task at
+        JOIN assignment a ON at.assignment_id = a.id
+        WHERE UPPER(at.status) = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
+      `);
+      const coBranchReports = await this.db.query(`
+        SELECT 
+          bd.id,
+          bd.name,
+          bd.type,
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id) as total_assignments,
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) = 'COMPLETED') as completed_assignments,
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) IN ('REVIEW_PENDING', 'TIMELINE_REVIEW')) as review_pending_assignments,
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) = 'IN_PROGRESS') as active_assignments,
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED') as overdue_assignments
+        FROM branch_dept bd
+        ORDER BY bd.name ASC
+      `);
+      const coAwaitingAction = await this.db.query(`
+        SELECT 
+          a.id as assignment_id,
+          ts.name as task_set_name,
+          bd.name as branch_name,
+          a.status,
+          a.proposed_timeline::TEXT as proposed_timeline
+        FROM assignment a
+        JOIN task_set ts ON ts.id = a.task_set_id
+        JOIN branch_dept bd ON bd.id = a.branch_id
+        ORDER BY a.id DESC
+      `);
+
+      coMetricsData = {
+        totalBranches: parseInt(coBranchesCount.rows[0]?.count || '0', 10),
+        totalHeadOffice: parseInt(coHeadOfficeCount.rows[0]?.count || '0', 10),
+        pendingCompliance: parseInt(coPendingCompliance.rows[0]?.count || '0', 10),
+        totalOverdue: parseInt(coOverdue.rows[0]?.count || '0', 10),
+        branchReports: coBranchReports.rows.map((row: any) => ({
+          ...row,
+          total_assignments: parseInt(row.total_assignments || '0', 10),
+          completed_assignments: parseInt(row.completed_assignments || '0', 10),
+          review_pending_assignments: parseInt(row.review_pending_assignments || '0', 10),
+          active_assignments: parseInt(row.active_assignments || '0', 10),
+          overdue_assignments: parseInt(row.overdue_assignments || '0', 10)
+        })),
+        awaitingActionQueue: coAwaitingAction.rows
+      };
+    }
+
+    const ccoAwaitingAction = await this.db.query(`
+      SELECT 
+        a.id as assignment_id,
+        ts.name as task_set_name,
+        bd.name as branch_name,
+        a.status,
+        a.proposed_timeline::TEXT as proposed_timeline
+      FROM assignment a
+      JOIN task_set ts ON ts.id = a.task_set_id
+      JOIN branch_dept bd ON bd.id = a.branch_id
+      ORDER BY a.id DESC
+    `);
 
     return {
       circulars: parseInt(circularCount.rows[0]?.count || '0'),
@@ -171,86 +252,18 @@ export class DashboardService {
         pendingTimeline: parseInt(stats.pending_timeline || '0'),
         timelineReview: parseInt(stats.timeline_review || '0'),
         escalated: parseInt(stats.escalated || '0'),
+        rejected: parseInt(stats.rejected || '0')
       },
       recentCirculars: recentCirculars.rows,
       recentAssignments: recentAssignments.rows,
       authorityStats: authorityStats.rows,
-      coMetrics: role === 'CO' && userId ? await (async () => {
-        const [
-          coBranchesCount,
-          coHeadOfficeCount,
-          coPendingCompliance,
-          coOverdue,
-          coBranchReports,
-          coAwaitingAction
-        ] = await Promise.all([
-          this.db.query("SELECT count(*) as count FROM branch_dept WHERE co_user_id = $1 AND type = 'BRANCH'", [userId]),
-          this.db.query("SELECT count(*) as count FROM branch_dept WHERE co_user_id = $1 AND type = 'DEPARTMENT'", [userId]),
-          this.db.query(`
-            SELECT count(at.id) as count
-            FROM assignment_task at
-            JOIN assignment a ON at.assignment_id = a.id
-            JOIN branch_dept bd ON a.branch_id = bd.id
-            WHERE bd.co_user_id = $1 AND at.status = 'PENDING'
-          `, [userId]),
-          this.db.query(`
-            SELECT count(at.id) as count
-            FROM assignment_task at
-            JOIN assignment a ON at.assignment_id = a.id
-            JOIN branch_dept bd ON a.branch_id = bd.id
-            WHERE bd.co_user_id = $1 AND at.status = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED'
-          `, [userId]),
-          this.db.query(`
-            SELECT 
-              bd.id,
-              bd.name,
-              bd.type,
-              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id) as total_assignments,
-              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'COMPLETED') as completed_assignments,
-              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'REVIEW_PENDING') as review_pending_assignments,
-              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.status = 'In_Progress') as active_assignments,
-              (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.proposed_timeline < CURRENT_DATE AND a.status != 'COMPLETED') as overdue_assignments
-            FROM branch_dept bd
-            WHERE bd.co_user_id = $1
-            ORDER BY bd.name ASC
-          `, [userId]),
-          this.db.query(`
-            SELECT 
-              a.id as assignment_id,
-              ts.name as task_set_name,
-              bd.name as branch_name,
-              a.status,
-              a.proposed_timeline::TEXT as proposed_timeline
-            FROM assignment a
-            JOIN task_set ts ON ts.id = a.task_set_id
-            JOIN branch_dept bd ON bd.id = a.branch_id
-            WHERE bd.co_user_id = $1 AND a.status IN ('Timeline_Review', 'REVIEW_PENDING')
-            ORDER BY a.id DESC
-            LIMIT 10
-          `, [userId])
-        ]);
-
-        return {
-          totalBranches: parseInt(coBranchesCount.rows[0]?.count || '0', 10),
-          totalHeadOffice: parseInt(coHeadOfficeCount.rows[0]?.count || '0', 10),
-          pendingCompliance: parseInt(coPendingCompliance.rows[0]?.count || '0', 10),
-          totalOverdue: parseInt(coOverdue.rows[0]?.count || '0', 10),
-          branchReports: coBranchReports.rows.map((row: any) => ({
-            ...row,
-            total_assignments: parseInt(row.total_assignments || '0', 10),
-            completed_assignments: parseInt(row.completed_assignments || '0', 10),
-            review_pending_assignments: parseInt(row.review_pending_assignments || '0', 10),
-            active_assignments: parseInt(row.active_assignments || '0', 10),
-            overdue_assignments: parseInt(row.overdue_assignments || '0', 10)
-          })),
-          awaitingActionQueue: coAwaitingAction.rows
-        };
-      })() : null,
+      coMetrics: coMetricsData,
       ccoMetrics: {
         totalBranches: parseInt(branchesCountRes.rows[0]?.count || '0', 10),
         totalHeadOffice: parseInt(headOfficeCountRes.rows[0]?.count || '0', 10),
         pendingCompliance: parseInt(pendingComplianceTasksRes.rows[0]?.count || '0', 10),
         totalOverdue: parseInt(overdueTasksRes.rows[0]?.count || '0', 10),
+        awaitingActionQueue: ccoAwaitingAction.rows,
         authorityReports: authorityReportsRes.rows.map((row: any) => ({
           ...row,
           applicable_circulars: parseInt(row.applicable_circulars || '0', 10),

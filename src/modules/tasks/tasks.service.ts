@@ -79,6 +79,23 @@ export class TasksService {
     return result.rows[0];
   }
 
+  async approveAll(circularId?: number) {
+    let query = `
+      UPDATE compliance_task
+      SET is_approved = TRUE,
+          status = 'APPROVED'
+      WHERE is_discarded = FALSE AND is_approved = FALSE
+    `;
+    const params: any[] = [];
+    if (circularId) {
+      query += ` AND circular_id = $1`;
+      params.push(circularId);
+    }
+    query += ` RETURNING *`;
+    const result = await this.db.query(query, params);
+    return { count: result.rowCount, approvedTasks: result.rows };
+  }
+
 
   async getStats(circularId?: number) {
     let whereClause = 'WHERE is_discarded = FALSE';

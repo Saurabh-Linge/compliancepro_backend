@@ -6,6 +6,7 @@ import { AssignmentsSchedulerService } from './assignments-scheduler.service';
 @Module({
   controllers: [AssignmentsController],
   providers: [AssignmentsService, AssignmentsSchedulerService],
+  exports: [AssignmentsService, AssignmentsSchedulerService]
 })
 export class AssignmentsModule {}
 

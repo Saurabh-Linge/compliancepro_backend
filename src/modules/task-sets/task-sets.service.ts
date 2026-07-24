@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../core/database/database.service';
 import { CreateTaskSetDto } from './dto/create-task-set.dto';
 import { UpdateTaskSetDto } from './dto/update-task-set.dto';
+import { AssignmentsSchedulerService } from '../assignments/assignments-scheduler.service';
 
 @Injectable()
 export class TaskSetsService {
-  constructor(private readonly db: DatabaseService) { }
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly assignmentsScheduler: AssignmentsSchedulerService
+  ) { }
 
   async create(createTaskSetDto: CreateTaskSetDto) {
     const query = `
@@ -128,6 +132,13 @@ export class TaskSetsService {
     if (branchIds && branchIds.length > 0) {
       const mappingValues = branchIds.map(branchId => `(${id}, ${branchId})`).join(',');
       await this.db.query(`INSERT INTO task_set_branch (task_set_id, branch_id) VALUES ${mappingValues}`);
+      
+      // Immediately generate assignments for the newly mapped units
+      try {
+        await this.assignmentsScheduler.generateAssignmentsForActiveTaskSets(id);
+      } catch (err) {
+        console.error(`Error auto-generating assignments for task set ID ${id}:`, err);
+      }
     }
 
     return { mapped: true };

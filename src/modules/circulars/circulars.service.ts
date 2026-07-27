@@ -63,7 +63,7 @@ export class CircularsService {
       input.reference_no || null,
       input.title,
       input.published_date,
-      input.priority || 'General',
+      input.priority || 'Medium',
       input.circular_type ?? 6,
       input.description || null,
       input.portal_website || null,

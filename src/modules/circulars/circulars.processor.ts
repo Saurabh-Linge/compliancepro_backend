@@ -10,7 +10,7 @@ import { AiService } from '../../core/ai/ai.service';
 import { DatabaseService } from '../../core/database/database.service';
 
 @Processor('circulars', { 
-  concurrency: parseInt(process.env.WORKER_CONCURRENCY || '1', 10),
+  concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5', 10),
   prefix: process.env.BULL_PREFIX || 'bull'
 })
 export class CircularsProcessor extends WorkerHost {
@@ -27,12 +27,6 @@ export class CircularsProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    // In local development (ENABLE_SCRAPER=false), skip all jobs to avoid
-    // consuming from the shared production Redis queue.
-    if (process.env.ENABLE_SCRAPER === 'false') {
-      this.logger.warn(`[CircularsProcessor] ENABLE_SCRAPER=false — skipping job ${job.name} (ID: ${job.id}) in dev mode.`);
-      return;
-    }
     this.logger.log(`[CircularsProcessor] Received job: ${job.name} (Job ID: ${job.id})`);
     try {
       if (job.name === 'processCircularFiles') {
@@ -92,11 +86,13 @@ export class CircularsProcessor extends WorkerHost {
         let extractedTitle = extractedData.title || null;
         let extractedDesc = extractedData.description || null;
 
-        // Fallback: If title is missing/null but description is a short title-like string, use description as title
-        if (!extractedTitle && extractedDesc && extractedDesc.length < 180) {
-          this.logger.log(`[Fallback] Title is null but description is short (${extractedDesc.length} chars). Using description as title.`);
-          extractedTitle = extractedDesc;
-        }
+        // Preserve clean existing title (from RBI scraper table or manual title)
+        const existingCircRes = await this.db.query(`SELECT title, reference_no FROM circular WHERE id = $1`, [data.circularId]);
+        const existingCirc = existingCircRes.rows[0];
+        const existingTitle = existingCirc?.title?.trim();
+        const finalTitle = (existingTitle && existingTitle !== 'Untitled Circular' && existingTitle !== 'Automated scrape from RBI website')
+          ? existingTitle
+          : (extractedTitle || existingTitle || 'Circular');
 
         await this.db.query(
           `UPDATE circular SET 
@@ -107,7 +103,7 @@ export class CircularsProcessor extends WorkerHost {
             is_penalty_applicable = COALESCE($5, is_penalty_applicable),
             penalty_amount = COALESCE($6, penalty_amount),
             penalty_description = COALESCE($7, penalty_description),
-            title = COALESCE($8, title),
+            title = $8,
             published_date = COALESCE($10, published_date)
            WHERE id = $9`,
           [
@@ -118,7 +114,7 @@ export class CircularsProcessor extends WorkerHost {
             extractedData.is_penalty_applicable,
             extractedData.penalty_amount,
             extractedData.penalty_description,
-            extractedTitle || null,
+            finalTitle,
             data.circularId,
             extractedData.published_date || null
           ]
@@ -315,11 +311,13 @@ export class CircularsProcessor extends WorkerHost {
       let extractedTitle = extractedData.title || null;
       let extractedDesc = extractedData.description || null;
 
-      // Fallback: If title is missing/null but description is a short title-like string, use description as title
-      if (!extractedTitle && extractedDesc && extractedDesc.length < 180) {
-        this.logger.log(`[Fallback] Title is null but description is short (${extractedDesc.length} chars). Using description as title.`);
-        extractedTitle = extractedDesc;
-      }
+      // Preserve clean existing title (from RBI scraper table or initial title)
+      const existingCircRes = await this.db.query(`SELECT title, reference_no FROM circular WHERE id = $1`, [circular.id]);
+      const existingCirc = existingCircRes.rows[0];
+      const existingTitle = existingCirc?.title?.trim() || circular.title?.trim();
+      const finalTitle = (existingTitle && existingTitle !== 'Untitled Circular' && existingTitle !== 'Automated scrape from RBI website')
+        ? existingTitle
+        : (extractedTitle || existingTitle || 'Circular');
 
       await this.db.query(
         `UPDATE circular SET 
@@ -330,7 +328,7 @@ export class CircularsProcessor extends WorkerHost {
           is_penalty_applicable = COALESCE($5, is_penalty_applicable),
           penalty_amount = COALESCE($6, penalty_amount),
           penalty_description = COALESCE($7, penalty_description),
-          title = COALESCE($8, title),
+          title = $8,
           published_date = COALESCE($10, published_date)
          WHERE id = $9`,
         [
@@ -341,7 +339,7 @@ export class CircularsProcessor extends WorkerHost {
           extractedData.is_penalty_applicable,
           extractedData.penalty_amount,
           extractedData.penalty_description,
-          extractedTitle || null,
+          finalTitle,
           circular.id,
           extractedData.published_date || null
         ]
@@ -393,38 +391,30 @@ export class CircularsProcessor extends WorkerHost {
     if (!description) return false;
 
     try {
-      const embedding = await this.aiService.generateEmbedding(description);
-      const embeddingString = `[${embedding.join(',')}]`;
-
-      const discardedIds = await this.aiService.detectAndFlagAmendments(description, embedding);
-      if (discardedIds.length > 0) {
-        await this.db.query(
-          `UPDATE compliance_task SET is_discarded = TRUE, status = 'DISCARDED' WHERE id = ANY($1::int[])`,
-          [discardedIds],
-        );
-        this.logger.log(`Discarded superseded tasks: [${discardedIds.join(', ')}]`);
+      if (process.env.ENABLE_OLLAMA === 'true') {
+        try {
+          const embedding = await this.aiService.generateEmbedding(description);
+          const embeddingString = `[${embedding.join(',')}]`;
+          await this.db.query(
+            `INSERT INTO compliance_task (circular_id, description, status, embedding)
+             VALUES ($1, $2, 'PENDING', $3)`,
+            [circularId, description, embeddingString],
+          );
+          return true;
+        } catch (embErr) {
+          // Fall through to plain insert
+        }
       }
 
       await this.db.query(
-        `INSERT INTO compliance_task (circular_id, description, status, embedding)
-         VALUES ($1, $2, 'PENDING', $3)`,
-        [circularId, description, embeddingString],
+        `INSERT INTO compliance_task (circular_id, description, status)
+         VALUES ($1, $2, 'PENDING')`,
+        [circularId, description],
       );
       return true;
-    } catch (taskErr: any) {
-      // Embedding failed — save task without vector so it's not lost
-      this.logger.warn(`Saving task without embedding (${taskErr.message}): ${description.substring(0, 60)}`);
-      try {
-        await this.db.query(
-          `INSERT INTO compliance_task (circular_id, description, status)
-           VALUES ($1, $2, 'PENDING')`,
-          [circularId, description],
-        );
-        return true;
-      } catch (saveErr: any) {
-        this.logger.error(`Failed to save task: ${saveErr.message}`);
-        return false;
-      }
+    } catch (saveErr: any) {
+      this.logger.error(`Failed to save task: ${saveErr.message}`);
+      return false;
     }
   }
 }

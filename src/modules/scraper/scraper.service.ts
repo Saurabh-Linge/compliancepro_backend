@@ -123,24 +123,37 @@ export class ScraperService implements OnModuleInit {
     const lastProcessedDate = state?.last_processed_date ? new Date(state.last_processed_date) : null;
     
     const $ = cheerio.load(html);
-    const circulars: {date: string, title: string, link: string, isWithdrawn?: boolean}[] = [];
+    const circulars: { date: string; title: string; reference_no?: string | null; link: string; isWithdrawn?: boolean }[] = [];
 
     $('table.tablebg tr').each((i, element) => {
       if (i === 0) return;
       const tds = $(element).find('td');
-      if (tds.length >= 3) {
-        const titleElement = $(tds[0]).find('a');
-        const title = titleElement.text().trim();
-        const link = titleElement.attr('href');
+      if (tds.length >= 2) {
+        const linkElement = $(tds[0]).find('a');
+        const link = linkElement.attr('href') || '';
+        const rawRefNo = $(tds[0]).text().replace(/\s+/g, ' ').trim();
         const dateText = $(tds[1]).text().trim();
+        
+        // Subject is in column 3 (index 3) on RBI table; fallback to column 2 if table has 3 columns
+        let subject = '';
+        if (tds.length >= 4) {
+          subject = $(tds[3]).text().replace(/\s+/g, ' ').trim();
+        } else if (tds.length === 3) {
+          subject = $(tds[2]).text().replace(/\s+/g, ' ').trim();
+        }
+
+        // Use subject as the clean human-readable title, fallback to reference number
+        const title = subject && subject.length > 3 ? subject : rawRefNo;
+        const referenceNo = rawRefNo && rawRefNo !== title ? rawRefNo : null;
+
         const rowHtml = $(element).html() || '';
-        // Often RBI puts a <font color="red">[Withdrawn]</font> or similar
         const isWithdrawn = (rowHtml.toLowerCase().includes('withdrawn') && (rowHtml.toLowerCase().includes('red') || rowHtml.toLowerCase().includes('#ff0000'))) || title.toLowerCase().includes('[withdrawn]');
         
         if (dateText && title && link) {
            circulars.push({ 
              date: dateText, 
              title, 
+             reference_no: referenceNo,
              link: link.startsWith('http') ? link : `https://www.rbi.org.in/Scripts/${link}`,
              isWithdrawn
            });
@@ -223,6 +236,7 @@ export class ScraperService implements OnModuleInit {
         if (pdfBuffer) {
           await this.circularsService.createWithFiles({
               authority_id: authority.id,
+              reference_no: circular.reference_no,
               title: circular.title,
               published_date: circularDate.toISOString().split('T')[0],
               description: 'Automated scrape from RBI website',
@@ -238,6 +252,7 @@ export class ScraperService implements OnModuleInit {
         } else {
           await this.circularsService.create({
               authority_id: authority.id,
+              reference_no: circular.reference_no,
               title: circular.title,
               published_date: circularDate.toISOString().split('T')[0],
               description: 'Automated scrape from RBI website (No PDF found)',

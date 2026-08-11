@@ -30,11 +30,11 @@ async function cleanQueue() {
 
 async function truncateDatabase() {
   const client = new Client({
-    host: process.env.DB_HOST || 'db.kredpool.ai',
+    host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'dms@kredpool450',
-    database: process.env.DB_NAME || 'compliance_pro',
+    password: process.env.DB_PASSWORD || '1234',
+    database: process.env.DB_NAME || 'compliance_pro_local',
     ssl: process.env.DB_SSL === 'true'
   });
 
@@ -55,27 +55,19 @@ async function truncateDatabase() {
         circular,
         task_set_branch,
         task_set_mapping
-      CASCADE;
+      RESTART IDENTITY CASCADE;
     `);
     console.log('[DB] All circular and dependency tables successfully truncated!');
 
     console.log('[DB] Resetting RBI scraper state to start from 2017-01-01...');
     const updateRes = await client.query(`
-      UPDATE scraper_state 
-      SET last_processed_date = '2017-01-01 00:00:00+00' 
-      WHERE authority_name = 'RBI'
+      INSERT INTO scraper_state (authority_name, last_processed_date, updated_at)
+      VALUES ('RBI', '2017-01-01 00:00:00+00', CURRENT_TIMESTAMP)
+      ON CONFLICT (authority_name)
+      DO UPDATE SET last_processed_date = '2017-01-01 00:00:00+00', updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `);
-
-    if (updateRes.rows.length === 0) {
-      await client.query(`
-        INSERT INTO scraper_state (authority_name, last_processed_date)
-        VALUES ('RBI', '2017-01-01 00:00:00+00');
-      `);
-      console.log('[DB] RBI Scraper state inserted for 2017-01-01.');
-    } else {
-      console.log('[DB] RBI Scraper state updated to 2017-01-01:', updateRes.rows[0]);
-    }
+    console.log('[DB] RBI Scraper state set to 2017-01-01:', updateRes.rows[0]);
 
     // Check counts
     const circCount = await client.query('SELECT COUNT(*) FROM circular;');

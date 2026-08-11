@@ -49,6 +49,10 @@ export class AiService {
       this.baseUrl = 'https://api.groq.com/openai/v1';
       this.apiKey = this.configService.get('GROQ_API_KEY', '');
       this.modelName = this.configService.get('AI_MODEL', 'llama-3.1-8b-instant');
+    } else if (this.provider === 'openai') {
+      this.baseUrl = 'https://api.openai.com/v1';
+      this.apiKey = this.configService.get('OPENAI_API_KEY', '');
+      this.modelName = this.configService.get('AI_MODEL', 'gpt-4o-mini');
     } else {
       this.baseUrl = `${this.ollamaUrl}/v1`;
       this.apiKey = 'ollama'; // Ollama doesn't require an API key, but we send a dummy one
@@ -84,26 +88,32 @@ export class AiService {
     const messages = [
       {
         role: 'system',
-        content: `You are a compliance analyst. Read the following regulatory circular and extract metadata.
-IMPORTANT: This includes any regulatory amendments, rule changes, procedural updates, or new guidelines that a bank or organization must review or implement.
+        content: `You are a senior banking compliance analyst. Read the following regulatory circular and extract metadata and specific actionable compliance tasks.
+IMPORTANT: Extract any mandatory regulatory amendments, operational requirements, reporting deadlines, board/committee approvals, system changes, or compliance action items that a regulated bank/financial entity must perform.
 
 Return ONLY a valid JSON object matching this exact schema:
 {
   "reference_no": "string (The official circular reference number, e.g. RBI/2023-24/123 or DOR.ACC.REC.102/21.04.018/2025-26. Look closely at the header and first page, do not return null if a reference number is mentioned) or null",
-  "title": "string (The official name/subject of the circular, e.g. Information Technology Governance in Banks. Do not return null if a title is mentioned) or null",
-  "published_date": "string (The official publication date from the circular in YYYY-MM-DD format, e.g. 2026-06-24. Look at the header or near the reference number) or null",
+  "title": "string (The official subject/title of the circular, e.g. Master Direction - Know Your Customer (KYC) Direction, 2016. Do not put reference number here) or null",
+  "published_date": "string (The official publication date in YYYY-MM-DD format, e.g. 2026-06-24) or null",
   "priority": "High, Medium, or General",
   "circular_type": null,
-  "description": "A short 1-2 sentence summary of the circular",
+  "description": "A concise 1-2 sentence executive summary of the circular's objective",
   "is_penalty_applicable": boolean,
   "penalty_amount": number (or null),
-  "penalty_description": "string (or null)"
+  "penalty_description": "string (or null)",
+  "tasks": [
+    {
+      "description": "Clear, actionable, self-contained compliance task or operational instruction for the bank/department."
+    }
+  ]
 }
-No explanation, no markdown, no extra text. Only the JSON object.`,
+If no explicit tasks are found, formulate 1 to 3 standard review/implementation tasks based on the circular's directions.
+No explanation, no markdown code fence, no extra text. Only the JSON object.`,
       },
       {
         role: 'user',
-        content: `Circular Text:\n${text.substring(0, 10000)}\n\nJSON:`,
+        content: `Circular Text:\n${text.substring(0, 35000)}\n\nJSON:`,
       },
     ];
 
@@ -131,7 +141,7 @@ No explanation, no markdown, no extra text. Only the JSON object.`,
       }
 
       if (circularId) {
-        const promptLogMsg = `Sending prompt to Groq AI:\n\nSYSTEM: ${messages[0].content}\n\nUSER: ${messages[1].content}`;
+        const promptLogMsg = `Sending prompt to ${this.provider.toUpperCase()} AI:\n\nSYSTEM: ${messages[0].content}\n\nUSER: ${messages[1].content}`;
         await this.db.query(
           `INSERT INTO circular_log (circular_id, status, message) VALUES ($1, $2, $3)`,
           [circularId, 'PROCESSING', promptLogMsg]

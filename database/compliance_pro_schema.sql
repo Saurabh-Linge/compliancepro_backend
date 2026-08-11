@@ -73,6 +73,13 @@ CREATE TABLE IF NOT EXISTS compliance_task (
   is_approved BOOLEAN NOT NULL DEFAULT false,
   is_discarded BOOLEAN DEFAULT false,
   parent_task_id INTEGER REFERENCES compliance_task(id) ON DELETE SET NULL,
+  header_id INTEGER REFERENCES task_header(id) ON DELETE SET NULL,
+  priority VARCHAR(50),
+  risk_category VARCHAR(100),
+  business_risk TEXT,
+  control_risk TEXT,
+  audit_area_id INTEGER,
+  file_url TEXT,
   embedding vector(768),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

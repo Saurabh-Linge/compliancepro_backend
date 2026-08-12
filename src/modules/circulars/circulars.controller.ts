@@ -83,6 +83,7 @@ export class CircularsController {
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('search') search?: string,
+    @Query('category') category?: string,
     @Query('has_tasks') hasTasks?: string,
     @Query('authority_id') authorityId?: string,
     @Query('is_active') isActive?: string,
@@ -94,6 +95,7 @@ export class CircularsController {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       search,
+      category,
       hasTasks: hasTasks === 'true',
       authority_id: authorityId ? parseInt(authorityId, 10) : undefined,
       is_active: isActive !== undefined ? isActive === 'true' : undefined,
@@ -101,6 +103,11 @@ export class CircularsController {
       startDate,
       endDate,
     });
+  }
+
+  @Get('categories')
+  getCategories() {
+    return this.circularsService.getCategories();
   }
 
   @Get(':id')
@@ -243,6 +250,7 @@ export class CircularsController {
     if (body.published_date !== undefined) input.published_date = body.published_date;
     if (body.priority !== undefined) input.priority = body.priority;
     if (body.circular_type !== undefined) input.circular_type = parseInt(body.circular_type, 10);
+    if (body.category !== undefined) input.category = body.category;
     if (body.description !== undefined) input.description = body.description;
     if (body.portal_website !== undefined) input.portal_website = body.portal_website;
     if (body.is_penalty_applicable !== undefined) input.is_penalty_applicable = this.toBoolean(body.is_penalty_applicable);

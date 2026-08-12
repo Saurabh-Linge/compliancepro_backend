@@ -109,8 +109,20 @@ async function runMigration() {
     await targetClient.connect();
     console.log('[Connected] Target DB connected successfully!');
 
-    // 1. Cleanly Truncate target tables
-    console.log('\n[Target DB] Truncating mismatched circular & task tables in Target DB...');
+    // 1. Cleanly Ensure Category Schema and Truncate target tables
+    console.log('\n[Target DB] Ensuring category schema in Target DB...');
+    await targetClient.query(`
+      CREATE TABLE IF NOT EXISTS circular_category (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        description TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE circular ADD COLUMN IF NOT EXISTS category VARCHAR(255);
+    `);
+
+    console.log('[Target DB] Truncating mismatched circular & task tables in Target DB...');
     await targetClient.query(`
       TRUNCATE TABLE 
         assignment_task,
@@ -128,6 +140,7 @@ async function runMigration() {
     console.log('[Target DB] Cleaned and reset all target tables.');
 
     // 2. Migrate Tables in Order of Dependencies
+    await migrateTable(sourceClient, targetClient, 'circular_category', 'circular_category_id_seq');
     await migrateTable(sourceClient, targetClient, 'circular', 'circular_id_seq');
     await migrateTable(sourceClient, targetClient, 'circular_file', 'circular_file_id_seq');
     await migrateTable(sourceClient, targetClient, 'compliance_task', 'compliance_task_id_seq');

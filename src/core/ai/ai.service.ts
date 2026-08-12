@@ -13,6 +13,7 @@ export interface ExtractedTask {
 export interface ExtractedData {
   reference_no: string | null;
   title?: string | null;
+  category?: string | null;
   published_date?: string | null;
   priority: string;
   circular_type: number | null;
@@ -85,6 +86,16 @@ export class AiService {
   // ─── Task Extraction ────────────────────────────────────────────────────────
 
   async extractTasksFromText(text: string, circularId?: number): Promise<ExtractedData> {
+    let categoryEnumStr = "'All Regulated Entities', 'Commercial Banks', 'Small Finance Banks', 'Payments Banks', 'Urban Co-operative Banks', 'Rural Co-operative Banks', 'Regional Rural Banks', 'Non-Banking Financial Companies (NBFCs)', 'Housing Finance Companies (HFCs)', 'All-India Financial Institutions (AIFIs)', 'Authorized Dealers (AD Category-I Banks)', 'Credit Information Companies (CICs)'";
+    try {
+      const dbCats = await this.db.query(`SELECT name FROM circular_category WHERE is_active = true ORDER BY id ASC;`);
+      if (dbCats.rows.length > 0) {
+        categoryEnumStr = dbCats.rows.map(r => `'${r.name}'`).join(', ');
+      }
+    } catch (err) {
+      // Fallback to default
+    }
+
     const messages = [
       {
         role: 'system',
@@ -95,6 +106,7 @@ Return ONLY a valid JSON object matching this exact schema:
 {
   "reference_no": "string (The official circular reference number, e.g. RBI/2023-24/123 or DOR.ACC.REC.102/21.04.018/2025-26. Look closely at the header and first page, do not return null if a reference number is mentioned) or null",
   "title": "string (The official subject/title of the circular, e.g. Master Direction - Know Your Customer (KYC) Direction, 2016. Do not put reference number here) or null",
+  "category": "string (Must be one or more comma-separated values selected STRICTLY from this standardized banking entities list: ${categoryEnumStr}. If addressed to an official new entity type not in this list, return that official entity name)",
   "published_date": "string (The official publication date in YYYY-MM-DD format, e.g. 2026-06-24) or null",
   "priority": "High, Medium, or General",
   "circular_type": null,
@@ -265,10 +277,22 @@ No explanation, no markdown code fence, no extra text. Only the JSON object.`,
       try {
         const parsed = JSON.parse(jsonToParse);
         console.log('[AI STAGE 7] JSON parsed successfully!');
-        
+
+        // Auto-register any newly discovered category in circular_category table
+        if (parsed.category) {
+          const catList = String(parsed.category).split(',').map(c => c.trim()).filter(Boolean);
+          for (const catName of catList) {
+            await this.db.query(
+              `INSERT INTO circular_category (name, description) VALUES ($1, 'Auto-discovered category') ON CONFLICT (name) DO NOTHING;`,
+              [catName]
+            ).catch(() => {});
+          }
+        }
+
         return {
           reference_no: parsed.reference_no || null,
           title: parsed.title || null,
+          category: parsed.category || null,
           published_date: parsed.published_date || null,
           priority: parsed.priority || 'General',
           circular_type: parsed.circular_type || null,

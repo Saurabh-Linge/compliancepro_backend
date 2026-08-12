@@ -27,6 +27,7 @@ export class CircularsService {
     published_date: string;
     priority?: string;
     circular_type?: number;
+    category?: string;
     description?: string;
     portal_website?: string;
     is_penalty_applicable?: boolean;
@@ -53,9 +54,10 @@ export class CircularsService {
         pdf_url,
         is_withdrawn,
         is_applicable,
-        is_active
+        is_active,
+        category
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `;
     const result = await this.db.query(query, [
@@ -74,6 +76,7 @@ export class CircularsService {
       input.is_withdrawn ?? false,
       input.is_applicable ?? true,
       input.is_active ?? true,
+      input.category || null,
     ]);
     const circular = result.rows[0];
 
@@ -196,6 +199,7 @@ export class CircularsService {
     page: number;
     limit: number;
     search?: string;
+    category?: string;
     hasTasks?: boolean;
     authority_id?: number;
     is_active?: boolean;
@@ -219,6 +223,12 @@ export class CircularsService {
           paramIndex++;
         });
       }
+    }
+
+    if (params.category) {
+      conditions.push(`c.category ILIKE $${paramIndex}`);
+      values.push(`%${params.category}%`);
+      paramIndex++;
     }
 
     if (hasTasks) {
@@ -283,7 +293,7 @@ export class CircularsService {
       FROM circular c
       LEFT JOIN authority a ON c.authority_id = a.id
       ${whereClause}
-      ORDER BY CASE WHEN c.ai_processing_status = 'COMPLETED' THEN 1 ELSE 2 END ASC
+      ORDER BY c.published_date DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
@@ -296,6 +306,12 @@ export class CircularsService {
       page,
       limit
     };
+  }
+
+  async getCategories() {
+    const query = `SELECT id, name, description FROM circular_category WHERE is_active = true ORDER BY id ASC;`;
+    const res = await this.db.query(query);
+    return res.rows;
   }
 
   async findOne(id: number) {

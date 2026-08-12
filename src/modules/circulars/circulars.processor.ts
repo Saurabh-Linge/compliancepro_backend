@@ -104,7 +104,8 @@ export class CircularsProcessor extends WorkerHost {
             penalty_amount = COALESCE($6, penalty_amount),
             penalty_description = COALESCE($7, penalty_description),
             title = $8,
-            published_date = COALESCE($10, published_date)
+            published_date = COALESCE($10, published_date),
+            category = COALESCE($11, category)
            WHERE id = $9`,
           [
             extractedData.reference_no || (extractedData as any).referenceNo || null,
@@ -116,7 +117,8 @@ export class CircularsProcessor extends WorkerHost {
             extractedData.penalty_description,
             finalTitle,
             data.circularId,
-            extractedData.published_date || null
+            extractedData.published_date || null,
+            extractedData.category || null
           ]
         );
         
@@ -225,6 +227,7 @@ export class CircularsProcessor extends WorkerHost {
         `SELECT id, title FROM circular
          WHERE LOWER(REPLACE(reference_no, ' ', '')) = LOWER(REPLACE($1, ' ', ''))
            AND id != $2
+           AND published_date <= COALESCE((SELECT published_date FROM circular WHERE id = $2), NOW())
          LIMIT 1`,
         [refNo.trim(), exclude]
       );
@@ -234,11 +237,11 @@ export class CircularsProcessor extends WorkerHost {
       }
 
       // ── Tier 2: Partial reference_no match (handles truncated refs) ──────────
-      // e.g. "RBI/2025-26/150" stored as "RBI/2025-26/150/DOR.RET.REC..." still matches
       const partialResult = await this.db.query(
         `SELECT id, title FROM circular
          WHERE reference_no ILIKE $1
            AND id != $2
+           AND published_date <= COALESCE((SELECT published_date FROM circular WHERE id = $2), NOW())
          ORDER BY published_date DESC
          LIMIT 1`,
         [`%${refNo.trim().replace(/[\/\-]/g, '%')}%`, exclude]
@@ -250,7 +253,6 @@ export class CircularsProcessor extends WorkerHost {
     }
 
     // ── Tier 3: PostgreSQL full-text search on title ───────────────────────────
-    // Strip amendment-specific words, then use ts_query for relevance ranking
     if (title) {
       const cleanWords = title
         .replace(/\b(amendment|amending|amend|directions|circular|guidelines|master|rbi|dated|january|february|march|april|may|june|july|august|september|october|november|december|\d{4})\b/gi, '')
@@ -270,11 +272,12 @@ export class CircularsProcessor extends WorkerHost {
            FROM circular
            WHERE to_tsvector('english', title) @@ to_tsquery('english', $1)
              AND id != $2
+             AND published_date <= COALESCE((SELECT published_date FROM circular WHERE id = $2), NOW())
            ORDER BY rank DESC, published_date DESC
            LIMIT 1`,
           [tsQuery, exclude]
         );
-        if (ftsResult.rows.length > 0) {
+        if (ftsResult.rows.length > 0 && ftsResult.rows[0].rank >= 0.1) {
           this.logger.log(`[findOriginalCircular] Tier3 FTS hit: #${ftsResult.rows[0].id}`);
           return ftsResult.rows[0];
         }
@@ -329,7 +332,8 @@ export class CircularsProcessor extends WorkerHost {
           penalty_amount = COALESCE($6, penalty_amount),
           penalty_description = COALESCE($7, penalty_description),
           title = $8,
-          published_date = COALESCE($10, published_date)
+          published_date = COALESCE($10, published_date),
+          category = COALESCE($11, category)
          WHERE id = $9`,
         [
           extractedData.reference_no || (extractedData as any).referenceNo || null,
@@ -341,7 +345,8 @@ export class CircularsProcessor extends WorkerHost {
           extractedData.penalty_description,
           finalTitle,
           circular.id,
-          extractedData.published_date || null
+          extractedData.published_date || null,
+          extractedData.category || null
         ]
       );
 

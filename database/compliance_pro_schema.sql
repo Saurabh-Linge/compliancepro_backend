@@ -37,7 +37,12 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS authority (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  source_url VARCHAR(500)
+CREATE TABLE IF NOT EXISTS circular_category (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS circular (
@@ -48,6 +53,7 @@ CREATE TABLE IF NOT EXISTS circular (
   published_date DATE,
   priority VARCHAR(20) DEFAULT 'General',
   circular_type INTEGER DEFAULT 6,
+  category VARCHAR(255),
   description TEXT,
   portal_website VARCHAR(500),
   is_penalty_applicable BOOLEAN DEFAULT false,

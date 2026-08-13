@@ -23,7 +23,7 @@ export class UsersService {
         (SELECT json_agg(bd.id) FROM branch_dept bd WHERE bd.co_user_id = u.id) as managed_branch_ids
       FROM users u
       LEFT JOIN branch_dept b ON u.branch_id = b.id
-      ORDER BY u.created_at DESC
+      ORDER BY u.id::integer ASC
     `;
     const result = await this.db.query(query);
     return result.rows;
@@ -53,8 +53,6 @@ export class UsersService {
   }
 
   async create(data: CreateUserDto) {
-    const id = this.idService.generate();
-
     let passwordHash = '';
     if (data.password) {
       passwordHash = await bcrypt.hash(data.password, 10);
@@ -65,14 +63,13 @@ export class UsersService {
 
     const query = `
       INSERT INTO users (
-        id, username, password_hash, full_name, email, 
+        username, password_hash, full_name, email, 
         mobile_number, role, branch_id, is_active
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id, username, full_name, role, branch_id, is_active
     `;
     const values = [
-      id,
       data.username,
       passwordHash,
       data.full_name,

@@ -1,15 +1,15 @@
 const { Client } = require('pg');
-const client = new Client({
-  user: 'postgres',
-  host: 'db.kredpool.in',
-  database: 'compliance_pro',
-  password: 'dms@kredpool450',
-  port: 5432
-});
-client.connect().then(async () => {
-  const res = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'branch_dept'");
-  console.log('branch_dept:', res.rows.map(r=>r.column_name));
-  const res2 = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'");
-  console.log('users:', res2.rows.map(r=>r.column_name));
-  client.end();
-});
+
+async function check() {
+  const client = new Client({ connectionString: 'postgres://postgres:1234@localhost:5432/compliance_pro_local' });
+  await client.connect();
+  const res = await client.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'task_set'");
+  console.log('task_set columns:', res.rows.map(r => r.column_name));
+  const resTask = await client.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'compliance_task'");
+  console.log('compliance_task columns:', resTask.rows.map(r => r.column_name));
+  const resAss = await client.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'assignment'");
+  console.log('assignment columns:', resAss.rows.map(r => r.column_name));
+  await client.end();
+}
+
+check().catch(err => console.error(err));

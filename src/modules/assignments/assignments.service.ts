@@ -33,15 +33,19 @@ export class AssignmentsService implements OnModuleInit {
   }
 
   async create(taskSetId: number, branchIds: number[], proposedTimeline: string) {
+    const tsRes = await this.db.query('SELECT type FROM task_set WHERE id = $1', [taskSetId]);
+    const isInternal = (tsRes.rows[0]?.type || '').toUpperCase() === 'INTERNAL';
+    const initialStatus = isInternal ? 'In_Progress' : 'Pending_Timeline';
+
     const assignments = [];
     for (const branchId of branchIds) {
       // 1. Create the assignment
       const query = `
         INSERT INTO assignment (task_set_id, branch_id, proposed_timeline, status)
-        VALUES ($1, $2, $3, 'Pending_Timeline')
+        VALUES ($1, $2, $3, $4)
         RETURNING *
       `;
-      const result = await this.db.query(query, [taskSetId, branchId, proposedTimeline]);
+      const result = await this.db.query(query, [taskSetId, branchId, proposedTimeline, initialStatus]);
       const assignment = result.rows[0];
       assignments.push(assignment);
 
@@ -61,7 +65,7 @@ export class AssignmentsService implements OnModuleInit {
     const query = `
       SELECT 
         a.id, a.proposed_timeline, a.status, a.created_at,
-        ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date,
+        ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date, ts.type as task_set_type, ts.circular_id,
         (
           SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description))
           FROM task_set_mapping tsm
@@ -99,6 +103,7 @@ export class AssignmentsService implements OnModuleInit {
         a.review_remark as assignment_review_remark,
         a.timeline_remark as assignment_timeline_remark,
         ts.name as task_set_name,
+        ts.type as task_set_type,
         ts.frequency,
         ts.start_date,
         ts.end_date,
@@ -115,7 +120,7 @@ export class AssignmentsService implements OnModuleInit {
       JOIN branch_dept bd ON bd.id = a.branch_id
       JOIN compliance_task ct ON ct.id = at.task_id
       LEFT JOIN circular c ON c.id = ct.circular_id
-      LEFT JOIN authority auth ON auth.id = c.authority_id
+      LEFT JOIN authority auth ON auth.id = COALESCE(ct.authority_id, ts.authority_id, c.authority_id)
       LEFT JOIN task_header th ON ct.header_id = th.id
       LEFT JOIN LATERAL (
         SELECT id, file_url, remark FROM evidence
@@ -406,7 +411,7 @@ export class AssignmentsService implements OnModuleInit {
     const query = `
       SELECT 
         a.id, a.proposed_timeline, a.status, a.created_at,
-        ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date,
+        ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date, ts.type as task_set_type, ts.circular_id,
         bd.name as branch_name,
         (
           SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description, 'file_url', ct.file_url))
@@ -610,6 +615,15 @@ export class AssignmentsService implements OnModuleInit {
             [assignmentId]
           );
         }
+      } else if (action === 'ESCALATE') {
+        // When escalating to CCO, preserve tasks explicitly reviewed by CO (APPROVED, NEEDS_REDO, ESCALATED)
+        // and set any unreviewed tasks to ESCALATED
+        await client.query(
+          `UPDATE assignment_task
+           SET review_status = 'ESCALATED'
+           WHERE assignment_id = $1 AND review_status IS NULL`,
+          [assignmentId]
+        );
       }
 
       return { updated, previousStatus };

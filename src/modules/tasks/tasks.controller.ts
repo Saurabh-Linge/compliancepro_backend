@@ -75,7 +75,7 @@ export class TasksController {
   @Post('manual')
   createManualTask(
     @Body('description') description: string,
-    @Body('circular_id', ParseIntPipe) circularId: number,
+    @Body('circular_id') circularId?: number,
     @Body('header_id') headerId?: number,
     @Body('priority') priority?: string,
     @Body('risk_category') riskCategory?: string,
@@ -83,8 +83,9 @@ export class TasksController {
     @Body('control_risk') controlRisk?: string,
     @Body('audit_area_id') auditAreaId?: number,
     @Body('file_url') fileUrl?: string,
+    @Body('authority_id') authorityId?: number,
   ) {
-    return this.tasksService.createManual(description, circularId, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId, fileUrl);
+    return this.tasksService.createManual(description, circularId, headerId, priority, riskCategory, businessRisk, controlRisk, auditAreaId, fileUrl, authorityId);
   }
 
   @Put(':id')

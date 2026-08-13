@@ -19,7 +19,7 @@ export class AssignmentsSchedulerService {
   // Business logic to run calculation and generation
   async generateAssignmentsForActiveTaskSets(specificTaskSetId?: number): Promise<{ generated: number; skipped: number }> {
     let query = `
-      SELECT id, name, default_due_date, start_date, end_date, frequency, reporting_date
+      SELECT id, name, default_due_date, start_date, end_date, frequency, reporting_date, type
       FROM task_set
       WHERE 1=1
     `;
@@ -64,6 +64,9 @@ export class AssignmentsSchedulerService {
         `Processing task set "${ts.name}" (ID: ${ts.id}): Period ${periodStart} to ${periodEnd}, Due ${dueDate}`
       );
 
+      const isInternal = (ts.type || '').toUpperCase() === 'INTERNAL';
+      const initialStatus = isInternal ? 'In_Progress' : 'Pending_Timeline';
+
       for (const branchId of branchIds) {
         // Check if assignment already exists for this branch and due date
         const checkResult = await this.db.query(
@@ -79,12 +82,12 @@ export class AssignmentsSchedulerService {
           continue;
         }
 
-        // Create assignment record in 'Pending_Timeline' state
+        // Create assignment record
         const insertRes = await this.db.query(
           `INSERT INTO assignment (task_set_id, branch_id, proposed_timeline, status)
-           VALUES ($1, $2, $3, 'Pending_Timeline')
+           VALUES ($1, $2, $3, $4)
            RETURNING id`,
-          [ts.id, branchId, dueDate]
+          [ts.id, branchId, dueDate, initialStatus]
         );
         const newAssignmentId = insertRes.rows[0].id;
 
@@ -123,6 +126,12 @@ export class AssignmentsSchedulerService {
     const freq = frequency ? String(frequency).trim() : '6';
 
     switch (freq) {
+      case '0': // DAILY
+        periodStart = new Date(y, m, d);
+        periodEnd = new Date(y, m, d);
+        dueDate = defaultDueDateStr ? new Date(defaultDueDateStr) : new Date(y, m, d);
+        break;
+
       case '1': // FORTNIGHT
         if (d <= 15) {
           periodStart = new Date(y, m, 1);

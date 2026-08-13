@@ -13,8 +13,8 @@ export class TaskSetsService {
 
   async create(createTaskSetDto: CreateTaskSetDto) {
     const query = `
-      INSERT INTO task_set (name, circular_id, default_due_date, start_date, end_date, frequency, reporting_date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO task_set (name, circular_id, default_due_date, start_date, end_date, frequency, reporting_date, type, authority_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
     const result = await this.db.query(query, [
@@ -25,6 +25,8 @@ export class TaskSetsService {
       createTaskSetDto.end_date || null,
       createTaskSetDto.frequency || null,
       createTaskSetDto.reporting_date || null,
+      createTaskSetDto.type || 'REGULAR',
+      createTaskSetDto.authority_id || null,
     ]);
 
     const taskSet = result.rows[0];
@@ -41,20 +43,37 @@ export class TaskSetsService {
     const result = await this.db.query(`
       SELECT ts.*,
         c.title AS circular_title,
-        c.reference_no AS circular_reference_no
+        c.reference_no AS circular_reference_no,
+        a.name AS authority_name,
+        COALESCE(
+          (
+            SELECT string_agg(b.name, ', ' ORDER BY b.name)
+            FROM task_set_branch tsb
+            JOIN branch_dept b ON b.id = tsb.branch_id
+            WHERE tsb.task_set_id = ts.id
+          ),
+          '—'
+        ) AS branch_names
       FROM task_set ts
       LEFT JOIN circular c ON c.id = ts.circular_id
+      LEFT JOIN authority a ON a.id = ts.authority_id
       ORDER BY ts.id DESC
     `);
     return result.rows;
   }
 
   async findOne(id: number) {
-    const result = await this.db.query(`SELECT * FROM task_set WHERE id = $1`, [id]);
+    const result = await this.db.query(`
+      SELECT ts.*, a.name AS authority_name 
+      FROM task_set ts
+      LEFT JOIN authority a ON a.id = ts.authority_id
+      WHERE ts.id = $1
+    `, [id]);
     const taskSet = result.rows[0];
     if (taskSet) {
       const tasksResult = await this.db.query(`
-        SELECT t.*, tsm.due_date::TEXT as due_date FROM compliance_task t
+        SELECT t.*, tsm.due_date::TEXT as due_date, a.name as authority_name FROM compliance_task t
+        LEFT JOIN authority a ON a.id = t.authority_id
         JOIN task_set_mapping tsm ON t.id = tsm.task_id
         WHERE tsm.task_set_id = $1
       `, [id]);
@@ -74,13 +93,15 @@ export class TaskSetsService {
     const query = `
       UPDATE task_set
       SET name = COALESCE($1, name),
-          circular_id = COALESCE($2, circular_id),
+          circular_id = $2,
           default_due_date = COALESCE($3, default_due_date),
           start_date = COALESCE($4, start_date),
           end_date = COALESCE($5, end_date),
           frequency = COALESCE($6, frequency),
-          reporting_date = COALESCE($7, reporting_date)
-      WHERE id = $8
+          reporting_date = COALESCE($7, reporting_date),
+          type = COALESCE($8, type),
+          authority_id = $9
+      WHERE id = $10
       RETURNING *
     `;
     const result = await this.db.query(query, [
@@ -91,6 +112,8 @@ export class TaskSetsService {
       updateTaskSetDto.end_date || null,
       updateTaskSetDto.frequency || null,
       updateTaskSetDto.reporting_date || null,
+      updateTaskSetDto.type || null,
+      updateTaskSetDto.authority_id || null,
       id
     ]);
     return result.rows[0];

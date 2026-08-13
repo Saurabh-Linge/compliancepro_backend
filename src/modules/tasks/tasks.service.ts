@@ -123,20 +123,32 @@ export class TasksService {
 
   async createManual(
     description: string,
-    circularId: number,
+    circularId?: number | null,
     headerId?: number,
     priority?: string,
     riskCategory?: string,
     businessRisk?: string,
     controlRisk?: string,
     auditAreaId?: number,
-    fileUrl?: string
+    fileUrl?: string,
+    authorityId?: number | null
   ) {
     const res = await this.db.query(
-      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, status, priority, risk_category, business_risk, control_risk, audit_area_id, file_url) 
-       VALUES ($1, $2, $3, false, 'PENDING', $4, $5, $6, $7, $8, $9) 
+      `INSERT INTO compliance_task (description, circular_id, header_id, is_approved, status, priority, risk_category, business_risk, control_risk, audit_area_id, file_url, authority_id) 
+       VALUES ($1, $2, $3, true, 'APPROVED', $4, $5, $6, $7, $8, $9, $10) 
        RETURNING *`,
-      [description, circularId, headerId || null, priority || null, riskCategory || null, businessRisk || null, controlRisk || null, auditAreaId || null, fileUrl || null],
+      [
+        description,
+        circularId || null,
+        headerId || null,
+        priority || null,
+        riskCategory || null,
+        businessRisk || null,
+        controlRisk || null,
+        auditAreaId || null,
+        fileUrl || null,
+        authorityId || null
+      ],
     );
     return res.rows[0];
   }

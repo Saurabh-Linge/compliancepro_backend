@@ -34,6 +34,14 @@ export class CreateTaskSetDto {
   taskIds?: number[];
 
   @IsOptional()
+  @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsNumber()
+  authority_id?: number;
+
+  @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })
   branchIds?: number[];

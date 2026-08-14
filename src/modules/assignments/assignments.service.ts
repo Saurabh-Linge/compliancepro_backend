@@ -367,8 +367,8 @@ export class AssignmentsService implements OnModuleInit {
     return result.rows;
   }
 
-  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string; onlyExpired?: boolean }) {
-    const { page, limit, branchId, search, status, onlyExpired } = params;
+  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string; onlyExpired?: boolean; taskSetType?: string }) {
+    const { page, limit, branchId, search, status, onlyExpired, taskSetType } = params;
     const offset = (page - 1) * limit;
 
     let conditions = ['1=1'];
@@ -394,6 +394,11 @@ export class AssignmentsService implements OnModuleInit {
       conditions.push(`(ts.name ILIKE $${paramIndex} OR bd.name ILIKE $${paramIndex} OR a.status ILIKE $${paramIndex})`);
       values.push(`%${search}%`);
       paramIndex++;
+    }
+
+    if (taskSetType) {
+      conditions.push(`UPPER(ts.type) = UPPER($${paramIndex++})`);
+      values.push(taskSetType);
     }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');

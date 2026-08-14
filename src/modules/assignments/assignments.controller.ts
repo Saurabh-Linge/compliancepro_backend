@@ -34,7 +34,8 @@ export class AssignmentsController {
     @Req() req: FastifyRequest,
     @Query('search') search?: string,
     @Query('status') status?: string,
-    @Query('only_expired') onlyExpired?: string
+    @Query('only_expired') onlyExpired?: string,
+    @Query('task_set_type') taskSetType?: string
   ) {
     const user = (req as any).user;
     let finalBranchId = branchId ? parseInt(branchId, 10) : undefined;
@@ -52,7 +53,8 @@ export class AssignmentsController {
       branchId: finalBranchId,
       search,
       status,
-      onlyExpired: onlyExpired === 'true'
+      onlyExpired: onlyExpired === 'true',
+      taskSetType
     });
   }
 

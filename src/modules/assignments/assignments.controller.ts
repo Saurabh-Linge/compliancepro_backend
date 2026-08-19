@@ -3,6 +3,7 @@ import { Controller, Get, Post, Put, Patch, Param, Body, Req, Query, BadRequestE
 import { AssignmentsService } from './assignments.service';
 import { AssignmentsSchedulerService } from './assignments-scheduler.service';
 import type { FastifyRequest } from 'fastify';
+import { Public } from '../../core/auth/public.decorator';
 
 @Controller('assignments')
 export class AssignmentsController {
@@ -11,9 +12,16 @@ export class AssignmentsController {
     private readonly assignmentsSchedulerService: AssignmentsSchedulerService
   ) {}
 
+  @Public()
   @Post('generate-assignments')
   async triggerAutoGeneration(@Body('task_set_id') taskSetId?: number) {
     return this.assignmentsSchedulerService.generateAssignmentsForActiveTaskSets(taskSetId);
+  }
+
+  @Public()
+  @Post('reset-and-regenerate')
+  async resetAndRegenerate() {
+    return this.assignmentsSchedulerService.resetAndRegenerateAssignments();
   }
 
   @Post()
@@ -35,7 +43,8 @@ export class AssignmentsController {
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('only_expired') onlyExpired?: string,
-    @Query('task_set_type') taskSetType?: string
+    @Query('task_set_type') taskSetType?: string,
+    @Query('frequency') frequency?: string
   ) {
     const user = (req as any).user;
     let finalBranchId = branchId ? parseInt(branchId, 10) : undefined;
@@ -54,7 +63,8 @@ export class AssignmentsController {
       search,
       status,
       onlyExpired: onlyExpired === 'true',
-      taskSetType
+      taskSetType,
+      frequency
     });
   }
 
@@ -133,6 +143,11 @@ export class AssignmentsController {
     return this.assignmentsService.getAssignmentEvidence(parseInt(id, 10));
   }
 
+  @Post(':id/notify')
+  async sendNotification(@Param('id') id: string, @Body('message') message: string) {
+    return this.assignmentsService.sendNotification(parseInt(id, 10), message);
+  }
+
   @Post(':id/tasks/:taskId/evidence')
   async uploadTaskEvidence(
     @Param('id') id: string,
@@ -147,6 +162,7 @@ export class AssignmentsController {
     const parts = fastifyReq.parts();
     const filesData: { buffer: Buffer; filename: string }[] = [];
     let remark = 'Evidence Document';
+    let complianceStatus: 'COMPLIED' | 'NOT_COMPLIED' = 'COMPLIED';
 
     for await (const part of parts) {
       if (part.file) {
@@ -154,6 +170,8 @@ export class AssignmentsController {
         filesData.push({ buffer, filename: part.filename });
       } else if (part.fieldname === 'remark') {
         remark = part.value as string;
+      } else if (part.fieldname === 'compliance_status') {
+        complianceStatus = part.value as 'COMPLIED' | 'NOT_COMPLIED';
       }
     }
 
@@ -163,13 +181,16 @@ export class AssignmentsController {
 
     const user = (req as any).user;
     const username = user?.username || 'Branch User';
+    const role = user?.role || 'DEPARTMENT';
 
     return this.assignmentsService.addTaskEvidences(
       parseInt(taskId, 10),
       parseInt(id, 10),
       filesData,
       remark,
-      username
+      username,
+      complianceStatus,
+      role
     );
   }
 
@@ -183,13 +204,15 @@ export class AssignmentsController {
   ) {
     const user = (req as any).user;
     const username = user?.username || 'Branch User';
+    const role = user?.role || 'DEPARTMENT';
 
     return this.assignmentsService.completeTaskDirectly(
       parseInt(taskId, 10),
       parseInt(id, 10),
       complianceStatus,
       remarks,
-      username
+      username,
+      role
     );
   }
 
@@ -197,9 +220,13 @@ export class AssignmentsController {
   async reviewAssignment(
     @Param('id') id: string,
     @Body('action') action: 'ACCEPT' | 'REJECT' | 'ESCALATE',
-    @Body('remark') remark: string
+    @Body('remark') remark: string,
+    @Req() req: FastifyRequest
   ) {
-    return this.assignmentsService.reviewAssignment(parseInt(id, 10), action, remark);
+    const user = (req as any).user;
+    const username = user?.username || 'Reviewer';
+    const role = user?.role || 'CO';
+    return this.assignmentsService.reviewAssignment(parseInt(id, 10), action, remark, username, role);
   }
 
   @Patch(':id/tasks/:taskId/review-status')
@@ -212,8 +239,9 @@ export class AssignmentsController {
   ) {
     const user = (req as any).user;
     const username = user?.username || 'Reviewer';
+    const role = user?.role || 'CO';
 
-    return this.assignmentsService.reviewTaskStatus(parseInt(taskId, 10), reviewStatus, reviewRemark, username);
+    return this.assignmentsService.reviewTaskStatus(parseInt(taskId, 10), reviewStatus, reviewRemark, username, role);
   }
 
   @Get(':id/tasks/:taskId/remarks-history')

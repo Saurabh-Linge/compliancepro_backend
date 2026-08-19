@@ -34,6 +34,11 @@ export class EmailService {
     text: string,
     html?: string,
   ): Promise<boolean> {
+    const isEnabled = this.configService.get<string>('EMAIL_NOTIFICATIONS_ENABLED') === 'true';
+    if (!isEnabled) {
+      this.logger.log(`[EmailService] Email notifications are disabled in .env. Skipping email to ${to}`);
+      return true;
+    }
     const fromEmail = this.configService.get<string>(
       'SMTP_FROM_EMAIL',
       'lukman@kredpool.com',

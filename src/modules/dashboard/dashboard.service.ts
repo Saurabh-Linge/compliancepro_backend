@@ -112,7 +112,7 @@ export class DashboardService {
          JOIN compliance_task ct ON at.task_id = ct.id 
          JOIN circular c ON ct.circular_id = c.id 
          JOIN assignment assign ON at.assignment_id = assign.id
-         WHERE c.authority_id = a.id AND (at.status IS NULL OR UPPER(at.status) = 'PENDING') AND assign.proposed_timeline < CURRENT_DATE AND UPPER(assign.status) != 'COMPLETED') as overdue_tasks,
+         WHERE c.authority_id = a.id AND (at.status IS NULL OR UPPER(at.status) = 'PENDING') AND at.due_date < CURRENT_DATE AND UPPER(assign.status) != 'COMPLETED') as overdue_tasks,
         (SELECT COALESCE(sum(c.penalty_amount), 0) FROM circular c WHERE c.authority_id = a.id AND c.is_penalty_applicable = TRUE) as total_penalty
       FROM authority a
       ORDER BY a.id ASC
@@ -161,7 +161,7 @@ export class DashboardService {
         SELECT count(at.id) as count 
         FROM assignment_task at 
         JOIN assignment a ON at.assignment_id = a.id 
-        WHERE UPPER(at.status) = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
+        WHERE UPPER(at.status) = 'PENDING' AND at.due_date < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
       `),
       this.db.query(authorityReportsQuery)
     ]);
@@ -179,7 +179,7 @@ export class DashboardService {
         SELECT count(at.id) as count
         FROM assignment_task at
         JOIN assignment a ON at.assignment_id = a.id
-        WHERE UPPER(at.status) = 'PENDING' AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
+        WHERE UPPER(at.status) = 'PENDING' AND at.due_date < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED'
       `);
       const coBranchReports = await this.db.query(`
         SELECT 
@@ -190,7 +190,7 @@ export class DashboardService {
           (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) = 'COMPLETED') as completed_assignments,
           (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) IN ('REVIEW_PENDING', 'TIMELINE_REVIEW')) as review_pending_assignments,
           (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND UPPER(a.status) = 'IN_PROGRESS') as active_assignments,
-          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND a.proposed_timeline < CURRENT_DATE AND UPPER(a.status) != 'COMPLETED') as overdue_assignments
+          (SELECT count(*) FROM assignment a WHERE a.branch_id = bd.id AND EXISTS (SELECT 1 FROM assignment_task at WHERE at.assignment_id = a.id AND at.due_date < CURRENT_DATE AND UPPER(at.status) = 'PENDING') AND UPPER(a.status) != 'COMPLETED') as overdue_assignments
         FROM branch_dept bd
         ORDER BY bd.name ASC
       `);

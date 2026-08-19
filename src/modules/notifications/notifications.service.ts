@@ -124,6 +124,10 @@ export class NotificationsService {
       title = 'Timeline Approved';
       message = `The proposed due dates/timeline for assignment "${payload.taskSetName}" has been approved. You can now start submitting compliance checklist items.`;
       emailSubject = `[Timeline Approved] ${payload.taskSetName}`;
+    } else if (payload.status === 'NEW_ASSIGNMENT') {
+      title = 'New Assignment Received';
+      message = `A new task assignment "${payload.taskSetName}" has been assigned to your department/branch.`;
+      emailSubject = `[New Assignment] ${payload.taskSetName}`;
     } else {
       return; // Not a status we notify for
     }
@@ -310,6 +314,36 @@ export class NotificationsService {
       }
     } catch (error) {
       this.logger.error('Failed to send task timeline review notification', error);
+    }
+  }
+
+  @OnEvent('assignment.custom_notify')
+  async handleCustomNotify(payload: { branchId: number; taskSetName: string; timelineDate: string; message: string; }) {
+    this.logger.log(`Custom notify to branch ${payload.branchId} for ${payload.taskSetName} (Due: ${payload.timelineDate})`);
+    const title = 'Message from Compliance Officer';
+    const msg = `Regarding "${payload.taskSetName}" (Due: ${payload.timelineDate}): ${payload.message}`;
+    const emailSubject = `[Notice] Message regarding ${payload.taskSetName}`;
+    
+    try {
+      await this.db.query(
+        `INSERT INTO notification (branch_id, title, message) VALUES ($1, $2, $3)`,
+        [payload.branchId, title, msg],
+      );
+
+      const usersResult = await this.db.query(
+        `SELECT email FROM users WHERE branch_id = $1 AND email IS NOT NULL AND is_active = true`,
+        [payload.branchId],
+      );
+      for (const row of usersResult.rows) {
+        this.emailService.sendMail(
+          row.email, 
+          emailSubject, 
+          msg, 
+          `<p><strong>${title}</strong></p><p>${msg}</p><p>Please login to Compliance Pro to view details.</p>`
+        ).catch(err => this.logger.error(`Failed to send email to ${row.email}`, err));
+      }
+    } catch (error) {
+      this.logger.error('Failed to send custom notification', error);
     }
   }
 }

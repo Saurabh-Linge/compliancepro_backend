@@ -348,7 +348,11 @@ export class AssignmentsService implements OnModuleInit {
       SELECT 
         a.id, a.proposed_timeline, a.status, a.created_at,
         ts.name as task_set_name,
-        bd.name as branch_name
+        bd.name as branch_name,
+        EXISTS (
+          SELECT 1 FROM assignment_task at 
+          WHERE at.assignment_id = a.id AND at.due_date < CURRENT_DATE AND UPPER(at.status) = 'PENDING'
+        ) as is_overdue
       FROM assignment a
       JOIN task_set ts ON ts.id = a.task_set_id
       JOIN branch_dept bd ON bd.id = a.branch_id
@@ -364,11 +368,14 @@ export class AssignmentsService implements OnModuleInit {
     query += ` ORDER BY a.id DESC `;
 
     const result = await this.db.query(query, params);
-    return result.rows;
+    return result.rows.map((row: any) => ({
+      ...row,
+      status: (row.is_overdue && row.status?.toUpperCase() !== 'COMPLETED') ? 'Overdue' : row.status
+    }));
   }
 
-  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string; onlyExpired?: boolean; taskSetType?: string }) {
-    const { page, limit, branchId, search, status, onlyExpired, taskSetType } = params;
+  async findAllPaginated(params: { page: number; limit: number; branchId?: number; search?: string; status?: string; onlyExpired?: boolean; taskSetType?: string; frequency?: string }) {
+    const { page, limit, branchId, search, status, onlyExpired, taskSetType, frequency } = params;
     const offset = (page - 1) * limit;
 
     let conditions = ['1=1'];
@@ -381,12 +388,19 @@ export class AssignmentsService implements OnModuleInit {
     }
 
     if (status) {
-      conditions.push(`a.status = $${paramIndex++}`);
-      values.push(status);
+      if (status.toUpperCase() === 'OVERDUE') {
+        conditions.push(`EXISTS (SELECT 1 FROM assignment_task at WHERE at.assignment_id = a.id AND at.due_date < CURRENT_DATE AND UPPER(at.status) = 'PENDING')`);
+        conditions.push(`UPPER(a.status) != 'COMPLETED'`);
+      } else if (status.toUpperCase() === 'PENDING_RECOMPLIANCE' || status.toUpperCase() === 'REJECTED') {
+        conditions.push(`(UPPER(a.status) = 'PENDING_RECOMPLIANCE' OR UPPER(a.status) = 'REJECTED')`);
+      } else {
+        conditions.push(`a.status = $${paramIndex++}`);
+        values.push(status);
+      }
     }
 
     if (onlyExpired) {
-      conditions.push(`a.proposed_timeline < CURRENT_DATE`);
+      conditions.push(`EXISTS (SELECT 1 FROM assignment_task at WHERE at.assignment_id = a.id AND at.due_date < CURRENT_DATE AND UPPER(at.status) = 'PENDING')`);
       conditions.push(`UPPER(a.status) != 'COMPLETED'`);
     }
 
@@ -399,6 +413,11 @@ export class AssignmentsService implements OnModuleInit {
     if (taskSetType) {
       conditions.push(`UPPER(ts.type) = UPPER($${paramIndex++})`);
       values.push(taskSetType);
+    }
+
+    if (frequency) {
+      conditions.push(`UPPER(ts.frequency) = UPPER($${paramIndex++})`);
+      values.push(frequency);
     }
 
     const whereClause = 'WHERE ' + conditions.join(' AND ');
@@ -416,14 +435,14 @@ export class AssignmentsService implements OnModuleInit {
     const query = `
       SELECT 
         a.id, a.proposed_timeline, a.status, a.created_at,
-        ts.id as task_set_id, ts.name as task_set_name, ts.default_due_date, ts.type as task_set_type, ts.circular_id,
+        ts.id as task_set_id, ts.name as task_set_name, ts.type as task_set_type, ts.circular_id, ts.frequency, ts.due_time, ts.due_schedule,
         bd.name as branch_name,
-        (
-          SELECT json_agg(json_build_object('id', ct.id, 'description', ct.description, 'file_url', ct.file_url))
-          FROM task_set_mapping tsm
-          JOIN compliance_task ct ON ct.id = tsm.task_id
-          WHERE tsm.task_set_id = ts.id
-        ) as tasks
+        EXISTS (
+          SELECT 1 FROM assignment_task at 
+          WHERE at.assignment_id = a.id AND at.due_date < CURRENT_DATE AND UPPER(at.status) = 'PENDING'
+        ) as is_overdue,
+        (SELECT COUNT(*) FROM assignment_task at WHERE at.assignment_id = a.id) as total_tasks,
+        (SELECT COUNT(*) FROM assignment_task at WHERE at.assignment_id = a.id AND UPPER(at.status) = 'COMPLETED') as completed_tasks
       FROM assignment a
       JOIN task_set ts ON ts.id = a.task_set_id
       JOIN branch_dept bd ON bd.id = a.branch_id
@@ -436,7 +455,10 @@ export class AssignmentsService implements OnModuleInit {
     const result = await this.db.query(query, values);
 
     return {
-      data: result.rows,
+      data: result.rows.map((row: any) => ({
+        ...row,
+        status: (row.is_overdue && row.status?.toUpperCase() !== 'COMPLETED') ? 'Overdue' : row.status
+      })),
       total,
       page,
       limit
@@ -460,6 +482,27 @@ export class AssignmentsService implements OnModuleInit {
     await this.db.query(taskQuery, [date, id]);
 
     return result.rows[0];
+  }
+
+  async sendNotification(id: number, message: string) {
+    const query = `
+      SELECT a.branch_id, a.proposed_timeline, ts.name as task_set_name
+      FROM assignment a
+      JOIN task_set ts ON ts.id = a.task_set_id
+      WHERE a.id = $1
+    `;
+    const result = await this.db.query(query, [id]);
+    const assignment = result.rows[0];
+    if (assignment) {
+      this.eventEmitter.emit('assignment.custom_notify', {
+        branchId: assignment.branch_id,
+        taskSetName: assignment.task_set_name,
+        timelineDate: assignment.proposed_timeline ? new Date(assignment.proposed_timeline).toLocaleDateString('en-GB') : 'N/A',
+        message,
+      });
+      return { success: true };
+    }
+    return { success: false, message: 'Assignment not found' };
   }
 
   async updateStatus(id: number, status: string) {
@@ -492,7 +535,15 @@ export class AssignmentsService implements OnModuleInit {
     return updated;
   }
 
-  async addTaskEvidences(assignmentTaskId: number, assignmentId: number, filesData: { buffer: Buffer, filename: string }[], remark: string, username: string = 'Branch User') {
+  async addTaskEvidences(
+    assignmentTaskId: number,
+    assignmentId: number,
+    filesData: { buffer: Buffer; filename: string }[],
+    remark: string,
+    username: string = 'Branch User',
+    complianceStatus: 'COMPLIED' | 'NOT_COMPLIED' = 'COMPLIED',
+    userRole: string = 'DEPARTMENT'
+  ) {
     let lastResult = null;
     for (const file of filesData) {
       // 1. Upload file to MinIO
@@ -508,8 +559,16 @@ export class AssignmentsService implements OnModuleInit {
       lastResult = result.rows[0];
     }
 
-    // 3. Mark task as COMPLETED
-    await this.db.query(`UPDATE assignment_task SET status = 'COMPLETED', compliance_status = 'COMPLIED', completed_at = NOW() WHERE id = $1`, [assignmentTaskId]);
+    // 3. Mark task as COMPLETED and save remarks + compliance_status in assignment_task
+    await this.db.query(
+      `UPDATE assignment_task 
+       SET status = 'COMPLETED', 
+           compliance_status = $2, 
+           remarks = $3, 
+           completed_at = NOW() 
+       WHERE id = $1`,
+      [assignmentTaskId, complianceStatus, remark]
+    );
 
     // 4. Save history (avoid duplicates if same remark exists as the last entry)
     const lastHistoryRes = await this.db.query(
@@ -518,16 +577,17 @@ export class AssignmentsService implements OnModuleInit {
     );
     const lastHistory = lastHistoryRes.rows[0];
     if (!lastHistory || lastHistory.remark !== remark) {
+      const historyRole = userRole ? userRole.toUpperCase() : 'DEPARTMENT';
       await this.db.query(
-        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'COMPLIER', $2, $3)`,
-        [assignmentTaskId, username, remark]
+        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, $2, $3, $4)`,
+        [assignmentTaskId, historyRole, username, remark]
       );
     }
 
     return lastResult;
   }
 
-  async completeTaskDirectly(assignmentTaskId: number, assignmentId: number, complianceStatus: 'COMPLIED' | 'NOT_COMPLIED', remarks: string, username: string = 'Branch User') {
+  async completeTaskDirectly(assignmentTaskId: number, assignmentId: number, complianceStatus: 'COMPLIED' | 'NOT_COMPLIED', remarks: string, username: string = 'Branch User', userRole: string = 'DEPARTMENT') {
     const query = `
       UPDATE assignment_task
       SET compliance_status = $1,
@@ -547,9 +607,10 @@ export class AssignmentsService implements OnModuleInit {
     );
     const lastHistory = lastHistoryRes.rows[0];
     if (!lastHistory || lastHistory.remark !== remarks) {
+      const historyRole = userRole ? userRole.toUpperCase() : 'DEPARTMENT';
       await this.db.query(
-        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'COMPLIER', $2, $3)`,
-        [assignmentTaskId, username, remarks]
+        `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, $2, $3, $4)`,
+        [assignmentTaskId, historyRole, username, remarks]
       );
     }
 
@@ -562,6 +623,8 @@ export class AssignmentsService implements OnModuleInit {
         e.id, 
         e.file_url, 
         e.remark, 
+        e.submitted_at,
+        e.assignment_task_id,
         at.task_id, 
         ct.description
       FROM evidence e
@@ -574,7 +637,7 @@ export class AssignmentsService implements OnModuleInit {
     return result.rows;
   }
 
-  async reviewAssignment(assignmentId: number, action: 'ACCEPT' | 'REJECT' | 'ESCALATE', remark: string) {
+  async reviewAssignment(assignmentId: number, action: 'ACCEPT' | 'REJECT' | 'ESCALATE', remark: string, username: string = 'Reviewer', userRole: string = 'CO') {
     const result = await this.db.transaction(async (client) => {
       // Get current status before update
       const currentRes = await client.query(`SELECT status FROM assignment WHERE id = $1`, [assignmentId]);
@@ -659,56 +722,62 @@ export class AssignmentsService implements OnModuleInit {
       });
     }
 
+    // Log overall review remark to task history for all tasks under this assignment
+    if (remark && remark.trim()) {
+      const tasksRes = await this.db.query(
+        `SELECT id FROM assignment_task WHERE assignment_id = $1`,
+        [assignmentId]
+      );
+      const historyRole = userRole ? userRole.toUpperCase() : (action === 'ESCALATE' ? 'CO' : 'REVIEWER');
+      const formattedRemark = action === 'REJECT' && !remark.toLowerCase().includes('re-compliance')
+        ? `[Re-compliance Requested] ${remark}`
+        : remark;
+
+      for (const t of tasksRes.rows) {
+        const lastHistoryRes = await this.db.query(
+          `SELECT remark FROM assignment_task_remarks_history WHERE assignment_task_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [t.id]
+        );
+        if (!lastHistoryRes.rows[0] || lastHistoryRes.rows[0].remark !== formattedRemark) {
+          await this.db.query(
+            `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, $2, $3, $4)`,
+            [t.id, historyRole, username, formattedRemark]
+          );
+        }
+      }
+    }
+
     return updated;
   }
 
-  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO' | 'ESCALATED', reviewRemark?: string, username: string = 'Reviewer') {
-    let query: string;
-    let params: any[];
-
-    if (reviewStatus === 'NEEDS_REDO') {
-      query = `
-        UPDATE assignment_task
-        SET review_status = $1, 
-            review_remark = $2,
-            status = 'PENDING',
-            compliance_status = 'PENDING',
-            remarks = NULL
-        WHERE id = $3
-        RETURNING *
-      `;
-      params = [reviewStatus, reviewRemark || null, assignmentTaskId];
-    } else {
-      query = `
-        UPDATE assignment_task
-        SET review_status = $1, 
-            review_remark = $2
-        WHERE id = $3
-        RETURNING *
-      `;
-      params = [reviewStatus, reviewRemark || null, assignmentTaskId];
-    }
+  async reviewTaskStatus(assignmentTaskId: number, reviewStatus: 'APPROVED' | 'NEEDS_REDO' | 'ESCALATED', reviewRemark?: string, username: string = 'Reviewer', userRole: string = 'CO') {
+    const query = `
+      UPDATE assignment_task
+      SET review_status = $1, 
+          review_remark = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+    const params = [reviewStatus, reviewRemark || null, assignmentTaskId];
 
     const result = await this.db.query(query, params);
     const updatedTask = result.rows[0];
 
-    if (reviewStatus === 'NEEDS_REDO' && updatedTask?.assignment_id) {
-      await this.db.query(
-        `UPDATE assignment SET status = 'REJECTED', review_remark = $1 WHERE id = $2`,
-        [reviewRemark || 'Task needs re-compliance', updatedTask.assignment_id]
-      );
-    }
-
     if (reviewRemark) {
+      const historyRole = userRole ? userRole.toUpperCase() : 'CO';
+      const formattedRemark = reviewStatus === 'NEEDS_REDO' && !reviewRemark.toLowerCase().includes('re-compliance')
+        ? `[Re-compliance Requested] ${reviewRemark}`
+        : reviewRemark;
+
       const lastHistoryRes = await this.db.query(
         `SELECT remark FROM assignment_task_remarks_history WHERE assignment_task_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [assignmentTaskId]
       );
       const lastHistory = lastHistoryRes.rows[0];
-      if (!lastHistory || lastHistory.remark !== reviewRemark) {
+      if (!lastHistory || lastHistory.remark !== formattedRemark) {
         await this.db.query(
-          `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, 'REVIEWER', $2, $3)`,
-          [assignmentTaskId, username, reviewRemark]
+          `INSERT INTO assignment_task_remarks_history (assignment_task_id, role, username, remark) VALUES ($1, $2, $3, $4)`,
+          [assignmentTaskId, historyRole, username, formattedRemark]
         );
       }
     }
